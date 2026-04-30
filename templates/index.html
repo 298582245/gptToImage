@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Image Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              studio: {
+                ink: "#111827",
+                slate: "#667085",
+                line: "#E5E7EB",
+                shell: "#FAFAF8",
+                soft: "#F5F5F4",
+                accent: "#171717"
+              }
+            },
+            boxShadow: {
+              float: "0 20px 50px rgba(17, 24, 39, 0.08)",
+              soft: "0 8px 30px rgba(17, 24, 39, 0.06)"
+            },
+            borderRadius: {
+              "4xl": "2rem"
+            }
+          }
+        }
+      };
+    </script>
+    <style>
+      body {
+        font-family: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      .app-scrollbar::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+
+      .app-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(17, 24, 39, 0.12);
+        border-radius: 999px;
+      }
+
+      .app-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .field-select {
+        background-image:
+          linear-gradient(45deg, transparent 50%, #6b7280 50%),
+          linear-gradient(135deg, #6b7280 50%, transparent 50%);
+        background-position:
+          calc(100% - 18px) calc(50% - 2px),
+          calc(100% - 13px) calc(50% - 2px);
+        background-size: 5px 5px, 5px 5px;
+        background-repeat: no-repeat;
+      }
+
+      .loading-overlay {
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 160ms ease, visibility 160ms ease;
+      }
+
+      .loading-overlay.is-visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .spinner-ring {
+        animation: spin 0.9s linear infinite;
+      }
+
+      .progress-bar {
+        transition: width 600ms ease;
+      }
+
+      .line-clamp-3 {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-studio-ink">
+    <div class="min-h-screen lg:grid lg:grid-cols-[290px_minmax(0,1fr)]">
+      <aside class="border-b border-stone-200 bg-white/92 lg:min-h-screen lg:border-b-0 lg:border-r">
+        <div class="app-scrollbar flex h-full flex-col overflow-y-auto px-4 py-5 sm:px-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-medium uppercase tracking-normal text-stone-400">Studio</p>
+              <h1 class="mt-1 text-2xl font-semibold tracking-tight">AI Image</h1>
+            </div>
+            <div class="flex h-10 w-10 items-center justify-center rounded-2xl border border-stone-200 bg-stone-50 text-stone-500">
+              <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 7h16M4 12h16M4 17h10" stroke-linecap="round"/>
+              </svg>
+            </div>
+          </div>
+
+          <button type="button" class="mt-6 flex items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-3 text-sm font-medium text-white shadow-soft">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14" stroke-linecap="round"/>
+            </svg>
+            新建创作
+          </button>
+
+          <div class="mt-8 space-y-6">
+            <section class="rounded-3xl border border-stone-200 bg-stone-50 p-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-stone-900">连接配置</p>
+                  <p class="mt-1 text-xs leading-5 text-stone-500">兼容 OpenAI 官方格式</p>
+                </div>
+                <span class="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-[11px] text-stone-500">Live</span>
+              </div>
+              <div class="mt-4 space-y-3 text-xs text-stone-500">
+                <div class="rounded-2xl bg-white px-3 py-2.5">
+                  <p class="text-[11px] uppercase text-stone-400">Base URL</p>
+                  <p class="mt-1 truncate text-sm text-stone-700">{{ form_values.base_url }}</p>
+                </div>
+                <div class="rounded-2xl bg-white px-3 py-2.5">
+                  <p class="text-[11px] uppercase text-stone-400">模型列表</p>
+                  <p class="mt-1 text-sm text-stone-700">{{ model_status }}</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="rounded-3xl border border-stone-200 bg-white p-4">
+              <div class="flex items-center justify-between">
+                <h2 class="text-sm font-medium text-stone-900">本次参数</h2>
+                <span class="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-500">{{ form_values.n }} 张</span>
+              </div>
+              <dl class="mt-4 space-y-3 text-sm">
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-stone-500">模型</dt>
+                  <dd class="truncate font-medium text-stone-900">
+                    {% if form_values.model_choice == "__custom__" %}
+                      {{ form_values.custom_model or "自定义模型" }}
+                    {% else %}
+                      {{ form_values.model_choice }}
+                    {% endif %}
+                  </dd>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-stone-500">尺寸</dt>
+                  <dd class="font-medium text-stone-900">{{ form_values.size }}</dd>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-stone-500">质量</dt>
+                  <dd class="font-medium text-stone-900">{{ form_values.quality }}</dd>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-stone-500">背景</dt>
+                  <dd class="font-medium text-stone-900">{{ form_values.background }}</dd>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                  <dt class="text-stone-500">润色</dt>
+                  <dd class="font-medium text-stone-900">{{ "已开启" if form_values.polish_prompt else "关闭" }}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="rounded-3xl border border-stone-200 bg-white p-4">
+              <div class="flex items-center justify-between">
+                <h2 class="text-sm font-medium text-stone-900">共享画廊</h2>
+                <span class="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] text-stone-500">{{ history_items|length }} 张</span>
+              </div>
+              <p class="mt-2 text-xs leading-5 text-stone-500">所有通过这个页面生成的图片都会进入公开历史记录，方便集中查看与复用。</p>
+            </section>
+          </div>
+        </div>
+      </aside>
+
+      <main class="relative min-w-0">
+        <div class="absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-stone-100/90 to-transparent"></div>
+        <div class="relative z-10 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
+          <header class="flex flex-col gap-4 border-b border-stone-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm text-stone-500">图像工作台</p>
+              <h2 class="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">创意生图</h2>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 text-sm text-stone-500">
+              <span class="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1.5">OpenAI Compatible</span>
+              <span class="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1.5">Public Gallery</span>
+            </div>
+          </header>
+
+          <section class="mx-auto mt-10 max-w-5xl">
+            <div class="text-center">
+              <p class="text-sm text-stone-500">像对话一样生成图片，像作品集一样管理结果</p>
+              <h3 class="mt-3 text-4xl font-semibold tracking-tight text-stone-900 sm:text-5xl">把提示词变成画面</h3>
+            </div>
+
+            <form method="post" id="generate-form" class="mt-8 rounded-[32px] border border-stone-200 bg-white p-4 shadow-float sm:p-5">
+              <div class="rounded-[28px] border border-stone-200 bg-stone-50/70 p-3 sm:p-4">
+                <div class="flex items-start gap-3">
+                  <div class="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-stone-600 shadow-soft">
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <path d="M4 16l4.5-4.5a2 2 0 0 1 2.8 0L16 16" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M14 14l1.5-1.5a2 2 0 0 1 2.8 0L20 14" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M7.5 8.5h.01" stroke-linecap="round" stroke-linejoin="round"/>
+                      <rect x="3.5" y="4" width="17" height="16" rx="3" />
+                    </svg>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <textarea
+                      id="prompt"
+                      name="prompt"
+                      rows="4"
+                      class="w-full resize-none border-0 bg-transparent p-0 text-[15px] leading-7 text-stone-900 placeholder:text-stone-400 focus:outline-none"
+                      placeholder="描述你想生成的图片。比如：电影感、柔和晨光、半写实人物肖像、极简留白构图。"
+                    >{{ form_values.prompt }}</textarea>
+                  </div>
+                </div>
+
+                <div class="mt-4 flex flex-col gap-3 border-t border-stone-200 pt-4">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      id="refresh-models"
+                      class="rounded-full border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 transition hover:border-stone-300 hover:bg-stone-100"
+                    >
+                      刷新模型
+                    </button>
+                    <span id="model-status" class="text-xs text-stone-500">{{ model_status }}</span>
+                  </div>
+
+                  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <label class="block">
+                      <span class="mb-2 block text-xs font-medium text-stone-500">模型</span>
+                      <select id="model" name="model" data-model-select class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                        {% for option in model_options %}
+                        <option value="{{ option.value }}" {% if form_values.model_choice == option.value %}selected{% endif %}>
+                          {{ option.label }}
+                        </option>
+                        {% endfor %}
+                      </select>
+                      <small id="model-hint" class="mt-2 block min-h-[2.5rem] text-xs leading-5 text-stone-500">
+                        {% for option in model_options %}
+                          {% if form_values.model_choice == option.value %}
+                            {{ option.hint }}
+                          {% endif %}
+                        {% endfor %}
+                      </small>
+                    </label>
+
+                    <label id="custom-model-field" class="{% if form_values.model_choice != '__custom__' %}hidden{% endif %} block">
+                      <span class="mb-2 block text-xs font-medium text-stone-500">自定义模型名</span>
+                      <input id="custom_model" type="text" name="custom_model" value="{{ form_values.custom_model }}" placeholder="输入兼容接口的模型名" class="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
+                    </label>
+
+                    <label class="block">
+                      <span class="mb-2 block text-xs font-medium text-stone-500">尺寸</span>
+                      <select id="size" name="size" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                        {% for value in ["1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792", "512x512", "256x256", "auto"] %}
+                        <option value="{{ value }}" {% if form_values.size == value %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+
+                    <label class="block">
+                      <span class="mb-2 block text-xs font-medium text-stone-500">数量</span>
+                      <select id="n" name="n" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                        {% for value in range(1, 5) %}
+                        <option value="{{ value }}" {% if form_values.n|string == value|string %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+                    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <label class="block">
+                        <span class="mb-2 block text-xs font-medium text-stone-500">质量</span>
+                        <select id="quality" name="quality" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                          {% for value in ["auto", "high", "medium", "low", "hd", "standard"] %}
+                          <option value="{{ value }}" {% if form_values.quality == value %}selected{% endif %}>{{ value }}</option>
+                          {% endfor %}
+                        </select>
+                      </label>
+
+                      <label class="block">
+                        <span class="mb-2 block text-xs font-medium text-stone-500">背景</span>
+                        <select id="background" name="background" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                          {% for value in ["auto", "opaque", "transparent"] %}
+                          <option value="{{ value }}" {% if form_values.background == value %}selected{% endif %}>{{ value }}</option>
+                          {% endfor %}
+                        </select>
+                      </label>
+
+                      <label class="block">
+                        <span class="mb-2 block text-xs font-medium text-stone-500">输出格式</span>
+                        <select id="output_format" name="output_format" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                          {% for value in ["png", "jpeg", "webp"] %}
+                          <option value="{{ value }}" {% if form_values.output_format == value %}selected{% endif %}>{{ value }}</option>
+                          {% endfor %}
+                        </select>
+                      </label>
+
+                      <label class="block">
+                        <span class="mb-2 block text-xs font-medium text-stone-500">DALL·E 3 风格</span>
+                        <select id="style" name="style" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                          {% for value in ["vivid", "natural"] %}
+                          <option value="{{ value }}" {% if form_values.style == value %}selected{% endif %}>{{ value }}</option>
+                          {% endfor %}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div class="flex flex-col justify-between rounded-[28px] border border-stone-200 bg-white px-4 py-4">
+                      <div class="flex items-start justify-between gap-4">
+                        <div>
+                          <p class="text-sm font-medium text-stone-900">提示词润色</p>
+                          <p class="mt-1 text-xs leading-5 text-stone-500">保留主题意图，自动补充构图、光影、质感和材质信息。</p>
+                        </div>
+                        <label class="relative inline-flex cursor-pointer items-center">
+                          <input id="polish_prompt" type="checkbox" name="polish_prompt" value="on" class="peer sr-only" {% if form_values.polish_prompt %}checked{% endif %}>
+                          <span class="h-7 w-12 rounded-full bg-stone-300 transition peer-checked:bg-stone-900"></span>
+                          <span class="absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition peer-checked:translate-x-5"></span>
+                        </label>
+                      </div>
+
+                      <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <div class="grid gap-2">
+                          <label class="block">
+                            <span class="mb-2 block text-xs font-medium text-stone-500">Base URL</span>
+                            <input id="base_url" type="text" name="base_url" value="{{ form_values.base_url }}" placeholder="https://www.papaclaoud.top" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
+                          </label>
+                          <label class="block">
+                            <span class="mb-2 block text-xs font-medium text-stone-500">API Key</span>
+                            <input id="api_key" type="password" name="api_key" placeholder="留空则使用系统默认密钥" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
+                          </label>
+                        </div>
+
+                        <button type="submit" id="generate-button" class="inline-flex h-14 items-center justify-center rounded-full bg-stone-900 px-6 text-sm font-medium text-white transition hover:bg-black">
+                          <span class="mr-2">生成图片</span>
+                          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M13 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            {% if error %}
+            <div class="mt-5 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+              {{ error }}
+            </div>
+            {% endif %}
+
+            <section class="mt-10">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p class="text-sm text-stone-500">Current Session</p>
+                  <h4 class="mt-1 text-2xl font-semibold tracking-tight">本次结果</h4>
+                </div>
+                {% if images %}
+                <p class="text-sm text-stone-500">已生成 {{ images|length }} 张图片，结果同时加入公共画廊。</p>
+                {% else %}
+                <p class="text-sm text-stone-500">最新生成会优先显示在这里。</p>
+                {% endif %}
+              </div>
+
+              {% if images %}
+              <div class="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.8fr)]">
+                <article class="overflow-hidden rounded-[30px] border border-stone-200 bg-white shadow-soft">
+                  <div class="relative">
+                    <img src="{{ images[0].url }}" alt="本次生成图片" class="block aspect-[16/10] w-full object-cover">
+                    <div class="absolute left-5 top-5 flex flex-wrap gap-2">
+                      <span class="rounded-full bg-white/92 px-3 py-1.5 text-xs text-stone-700">{{ images[0].model }}</span>
+                      <span class="rounded-full bg-white/92 px-3 py-1.5 text-xs text-stone-700">{{ images[0].created_at }}</span>
+                    </div>
+                  </div>
+                  <div class="space-y-4 p-5">
+                    <div>
+                      <p class="text-xs uppercase text-stone-400">Prompt</p>
+                      <p class="mt-2 text-sm leading-7 text-stone-800">{{ images[0].prompt }}</p>
+                    </div>
+                    {% if images[0].prompt_polished %}
+                    <div class="grid gap-3 rounded-[24px] border border-stone-200 bg-stone-50 p-4">
+                      <div>
+                        <p class="text-xs uppercase text-stone-400">原始提示词</p>
+                        <p class="mt-2 text-sm leading-6 text-stone-700">{{ images[0].prompt }}</p>
+                      </div>
+                      <div>
+                        <p class="text-xs uppercase text-stone-400">实际发送提示词</p>
+                        <p class="mt-2 text-sm leading-6 text-stone-700">{{ images[0].effective_prompt }}</p>
+                      </div>
+                    </div>
+                    {% endif %}
+                  </div>
+                </article>
+
+                <div class="grid gap-4">
+                  {% for image in images %}
+                  <article class="overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-soft">
+                    <div class="grid grid-cols-[132px_minmax(0,1fr)] gap-0">
+                      <a href="{{ image.url }}" target="_blank" rel="noopener noreferrer" class="block">
+                        <img src="{{ image.url }}" alt="生成图片" class="h-full w-full object-cover">
+                      </a>
+                      <div class="flex min-w-0 flex-col justify-between p-4">
+                        <div>
+                          <div class="flex items-start justify-between gap-3">
+                            <strong class="truncate text-sm font-medium text-stone-900">{{ image.filename }}</strong>
+                            <span class="shrink-0 text-xs text-stone-400">{{ image.created_at }}</span>
+                          </div>
+                          <p class="mt-2 line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                          {% if image.prompt_polished %}
+                          <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">润色已开启</span>
+                          {% endif %}
+                          {% if image.revised_prompt %}
+                          <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">模型有改写</span>
+                          {% endif %}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                  {% endfor %}
+                </div>
+              </div>
+              {% else %}
+              <div class="mt-5 rounded-[32px] border border-dashed border-stone-300 bg-white px-8 py-16 text-center shadow-soft">
+                <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-stone-100 text-stone-500">
+                  <svg viewBox="0 0 24 24" class="h-8 w-8" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M4 16l4.5-4.5a2 2 0 0 1 2.8 0L16 16" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M14 14l1.5-1.5a2 2 0 0 1 2.8 0L20 14" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M7.5 8.5h.01" stroke-linecap="round" stroke-linejoin="round"/>
+                    <rect x="3.5" y="4" width="17" height="16" rx="3" />
+                  </svg>
+                </div>
+                <h4 class="mt-5 text-2xl font-semibold tracking-tight text-stone-900">等待你的第一张图</h4>
+                <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-stone-500">把灵感写进上面的输入框，选好模型和参数，生成结果会在这里以大图方式呈现。</p>
+              </div>
+              {% endif %}
+            </section>
+
+            <section class="mt-12">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p class="text-sm text-stone-500">Public Gallery</p>
+                  <h4 class="mt-1 text-2xl font-semibold tracking-tight">共享历史画廊</h4>
+                </div>
+                <p class="text-sm text-stone-500">所有用户都可查看的公共图片流，最新生成排在最前。</p>
+              </div>
+
+              {% if history_items %}
+              <div class="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                {% for image in history_items %}
+                <article class="overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-soft transition duration-200 hover:-translate-y-0.5">
+                  <a href="{{ image.url }}" target="_blank" rel="noopener noreferrer" class="block">
+                    <img src="{{ image.url }}" alt="历史生成图片" class="aspect-[4/5] w-full object-cover">
+                  </a>
+                  <div class="space-y-3 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <strong class="truncate text-sm font-medium text-stone-900">{{ image.model }}</strong>
+                      <span class="shrink-0 text-xs text-stone-400">{{ image.created_at }}</span>
+                    </div>
+                    <p class="line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
+                    <div class="flex items-center justify-between gap-3">
+                      {% if image.prompt_polished %}
+                      <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">润色开启</span>
+                      {% else %}
+                      <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-500">原始提示词</span>
+                      {% endif %}
+                      <a class="text-xs font-medium text-stone-900" href="{{ image.url }}" target="_blank" rel="noopener noreferrer">查看原图</a>
+                    </div>
+                  </div>
+                </article>
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="mt-5 rounded-[32px] border border-dashed border-stone-300 bg-white px-8 py-14 text-center shadow-soft">
+                <p class="text-sm text-stone-500">还没有公共图片记录，生成第一张图后这里会自动出现。</p>
+              </div>
+              {% endif %}
+            </section>
+
+            {% if request_payload %}
+            <details class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-soft">
+              <summary class="cursor-pointer text-sm font-medium text-stone-700">查看本次请求参数</summary>
+              <pre class="mt-4 overflow-x-auto rounded-2xl bg-stone-50 p-4 text-xs leading-6 text-stone-700">{{ request_payload | tojson(indent=2) }}</pre>
+            </details>
+            {% endif %}
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 px-4" aria-hidden="true">
+      <div class="w-full max-w-md rounded-[32px] border border-white/50 bg-white p-6 text-center shadow-float backdrop-blur">
+        <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-stone-200 bg-stone-50">
+          <svg viewBox="0 0 24 24" class="spinner-ring h-8 w-8 text-stone-900" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h3 class="mt-5 text-2xl font-semibold tracking-tight text-stone-900">正在生成图片</h3>
+        <p id="loading-text" class="mt-2 text-sm text-stone-500">正在初始化请求...</p>
+        <div class="mt-5 h-2.5 overflow-hidden rounded-full bg-stone-200">
+          <div id="progress-bar" class="progress-bar h-full w-[6%] rounded-full bg-stone-900"></div>
+        </div>
+        <p id="progress-value" class="mt-3 text-xs font-medium text-stone-600">6%</p>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("generate-form");
+      const overlay = document.getElementById("loading-overlay");
+      const progressBar = document.getElementById("progress-bar");
+      const progressValue = document.getElementById("progress-value");
+      const loadingText = document.getElementById("loading-text");
+      const modelSelect = document.querySelector("[data-model-select]");
+      const customModelField = document.getElementById("custom-model-field");
+      const modelHint = document.getElementById("model-hint");
+      const modelStatus = document.getElementById("model-status");
+      const refreshModelsButton = document.getElementById("refresh-models");
+      const baseUrlInput = document.getElementById("base_url");
+      const apiKeyInput = document.getElementById("api_key");
+      const basePath = "{{ base_path }}";
+      const modelHints = {
+        {% for option in model_options %}
+        "{{ option.value }}": "{{ option.hint }}",
+        {% endfor %}
+      };
+      const fallbackModels = [
+        {% for option in model_options %}
+        { value: "{{ option.value }}", label: "{{ option.label }}", hint: "{{ option.hint }}" },
+        {% endfor %}
+      ];
+      const steps = [
+        "正在初始化请求...",
+        "正在提交提示词...",
+        "模型正在生成画面...",
+        "正在接收图片数据...",
+        "正在保存到公共画廊..."
+      ];
+
+      if (form) {
+        const applyModels = (models, selectedValue) => {
+          if (!modelSelect) return;
+          modelSelect.innerHTML = "";
+          modelHints.__custom__ = "用于兼容接口的特殊模型名";
+
+          models.forEach((model) => {
+            modelHints[model.value] = model.hint || "";
+            const option = document.createElement("option");
+            option.value = model.value;
+            option.textContent = model.label;
+            if (model.value === selectedValue) {
+              option.selected = true;
+            }
+            modelSelect.appendChild(option);
+          });
+
+          if (!models.some((model) => model.value === selectedValue) && models.length > 0) {
+            modelSelect.value = selectedValue || models[0].value;
+          }
+        };
+
+        const syncModelUI = () => {
+          const isCustom = modelSelect && modelSelect.value === "__custom__";
+          if (customModelField) {
+            customModelField.classList.toggle("hidden", !isCustom);
+          }
+          if (modelHint && modelSelect) {
+            modelHint.textContent = modelHints[modelSelect.value] || "";
+          }
+        };
+
+        const loadModels = async (initial = false) => {
+          if (!refreshModelsButton) return;
+          refreshModelsButton.disabled = true;
+          refreshModelsButton.textContent = initial ? "加载中..." : "刷新中...";
+          if (modelStatus) {
+            modelStatus.textContent = "正在从接口加载模型列表...";
+          }
+
+          try {
+            const response = await fetch(`${basePath}/api/models`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                base_url: baseUrlInput ? baseUrlInput.value : "",
+                api_key: apiKeyInput ? apiKeyInput.value : "",
+                current_model: modelSelect ? modelSelect.value : "",
+              }),
+            });
+            const data = await response.json();
+            const models = Array.isArray(data.models) && data.models.length ? data.models : fallbackModels;
+            applyModels(models, data.selected_model || (modelSelect ? modelSelect.value : ""));
+            if (modelStatus) {
+              modelStatus.textContent = data.status || "模型列表已更新。";
+            }
+          } catch (error) {
+            applyModels(fallbackModels, modelSelect ? modelSelect.value : "");
+            if (modelStatus) {
+              modelStatus.textContent = "模型列表加载失败，已回退到默认模型。";
+            }
+          } finally {
+            refreshModelsButton.disabled = false;
+            refreshModelsButton.textContent = "刷新模型";
+            syncModelUI();
+          }
+        };
+
+        if (modelSelect) {
+          modelSelect.addEventListener("change", syncModelUI);
+          syncModelUI();
+        }
+
+        if (refreshModelsButton) {
+          refreshModelsButton.addEventListener("click", () => loadModels(false));
+          loadModels(true);
+        }
+
+        form.addEventListener("submit", () => {
+          overlay.classList.add("is-visible");
+          overlay.setAttribute("aria-hidden", "false");
+
+          let progress = 6;
+          let index = 0;
+          progressBar.style.width = `${progress}%`;
+          progressValue.textContent = `${progress}%`;
+          loadingText.textContent = steps[index];
+
+          const timer = window.setInterval(() => {
+            if (progress < 92) {
+              progress += progress < 50 ? 12 : 7;
+            }
+            if (index < steps.length - 1 && progress > (index + 1) * 18) {
+              index += 1;
+              loadingText.textContent = steps[index];
+            }
+            progressBar.style.width = `${Math.min(progress, 92)}%`;
+            progressValue.textContent = `${Math.min(progress, 92)}%`;
+          }, 700);
+
+          window.addEventListener("pageshow", () => window.clearInterval(timer), { once: true });
+        });
+      }
+    </script>
+  </body>
+</html>
