@@ -45,7 +45,7 @@ SECRET_KEY_FILE = DATA_DIR / "secret.key"
 FERNET_KEY_FILE = DATA_DIR / "fernet.key"
 
 DEFAULTS = {
-    "base_url": os.getenv("OPENAI_BASE_URL", "https://www.papaclaoud.top"),
+    "base_url": os.getenv("OPENAI_BASE_URL", "https://ai.wqwlkj.cn"),
     "api_key": os.getenv("OPENAI_API_KEY", ""),
     "model": os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
     "size": "1024x1024",

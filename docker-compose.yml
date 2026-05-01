@@ -1,0 +1,14 @@
+services:
+  gpt-text-to-image:
+    build: .
+    image: gpt-text-to-image:latest
+    container_name: gpt-text-to-image
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      BASE_PATH: /image-studio
+      OPENAI_BASE_URL: https://ai.wqwlkj.cn
+    volumes:
+      - ./generated:/app/generated
+      - ./data:/app/data
+    restart: unless-stopped

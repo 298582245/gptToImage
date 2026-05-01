@@ -263,7 +263,7 @@
                 </div>
 
                 <div class="mt-4 flex flex-col gap-3 border-t border-stone-200 pt-4">
-                  <div class="flex flex-wrap items-center gap-2">
+                  <div id="custom-model-tools" class="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       id="refresh-models"
@@ -275,7 +275,7 @@
                   </div>
 
                   <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <label class="block">
+                    <label id="model-choice-field" class="block">
                       <span class="mb-2 block text-xs font-medium text-stone-500">模型</span>
                       <select id="model" name="model" data-model-select class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
                         {% for option in model_options %}
@@ -370,10 +370,10 @@
                       </div>
 
                       <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                        <div class="grid gap-2">
+                        <div id="custom-credentials-fields" class="grid gap-2">
                           <label class="block">
                             <span class="mb-2 block text-xs font-medium text-stone-500">Base URL</span>
-                            <input id="base_url" type="text" name="base_url" value="{{ form_values.base_url }}" placeholder="https://www.papaclaoud.top" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
+                            <input id="base_url" type="text" name="base_url" value="{{ form_values.base_url }}" placeholder="https://ai.wqwlkj.cn" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
                           </label>
                           <label class="block">
                             <span class="mb-2 block text-xs font-medium text-stone-500">API Key</span>
@@ -571,6 +571,9 @@
       const apiKeyInput = document.getElementById("api_key");
       const customModelInput = document.getElementById("custom_model");
       const customConnectionPanel = document.getElementById("custom-connection-panel");
+      const customCredentialsFields = document.getElementById("custom-credentials-fields");
+      const customModelTools = document.getElementById("custom-model-tools");
+      const modelChoiceField = document.getElementById("model-choice-field");
       const generationModeInputs = Array.from(document.querySelectorAll("input[name='generation_mode']"));
       const basePath = "{{ base_path }}";
       const savedApiCredentialKey = "gpt-image-workbench.saved-api-credentials";
@@ -698,9 +701,18 @@
       const syncGenerationModeUI = () => {
         const generationMode = generationModeInputs.find((input) => input.checked)?.value || "custom";
         const isBuiltin = generationMode === "builtin";
-        if (customConnectionPanel) {
-          customConnectionPanel.classList.toggle("opacity-50", isBuiltin);
-          customConnectionPanel.classList.toggle("pointer-events-none", isBuiltin);
+        if (customCredentialsFields) {
+          customCredentialsFields.classList.toggle("hidden", isBuiltin);
+        }
+        if (customModelTools) {
+          customModelTools.classList.toggle("hidden", isBuiltin);
+        }
+        if (modelChoiceField) {
+          modelChoiceField.classList.toggle("hidden", isBuiltin);
+        }
+        if (customModelField) {
+          const isCustom = modelSelect && modelSelect.value === "__custom__";
+          customModelField.classList.toggle("hidden", isBuiltin || !isCustom);
         }
         if (refreshModelsButton) {
           refreshModelsButton.disabled = isBuiltin;
@@ -739,9 +751,11 @@
         };
 
         const syncModelUI = () => {
+          const generationMode = generationModeInputs.find((input) => input.checked)?.value || "custom";
+          const isBuiltin = generationMode === "builtin";
           const isCustom = modelSelect && modelSelect.value === "__custom__";
           if (customModelField) {
-            customModelField.classList.toggle("hidden", !isCustom);
+            customModelField.classList.toggle("hidden", isBuiltin || !isCustom);
           }
           if (modelHint && modelSelect) {
             modelHint.textContent = modelHints[modelSelect.value] || "";

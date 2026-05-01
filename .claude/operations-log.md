@@ -26,3 +26,18 @@
 - 任务: 在 README.md 补充原项目地址和基于原项目修改说明。
 - 验证: 静态文本修改，未运行项目。
 - conversationId: NOT_FOUND; 未提供 task_marker.
+
+- 时间: 2026-05-01 22:35 (UTC+8)
+- 执行者: Codex
+- 任务: 修复内置接口模式下生成按钮不可点问题; 内置模式隐藏模型选择和自定义接口字段.
+- 修改: templates/index.html.
+- 验证: 仅静态检查; py_compile/ast 通过, 抽取前端 script 后 node --check 通过.
+- conversationId: NOT_FOUND; 未提供 task_marker.
+
+- 时间: 2026-05-01 22:45 (UTC+8)
+- 执行者: Codex
+- 任务: 新增 docker-compose.yml, 将默认 Base URL 改为 https://ai.wqwlkj.cn, 更新 README Docker Compose 部署说明.
+- 修改: app.py, templates/index.html, docker-compose.yml, README.md.
+- 验证: 仅静态检查; py_compile/ast 通过, 文件读取和关键字检索通过.
+- conversationId: NOT_FOUND; 未提供 task_marker.
+

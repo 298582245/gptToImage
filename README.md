@@ -33,18 +33,28 @@ http://127.0.0.1:5000
 ```
 
 ## Docker 部署
+
+推荐使用 Docker Compose，以后每次 `git pull` 后只需重新构建并启动：
+
 ```bash
-docker build -t gpt-text-to-image:latest .
-docker run -d \
-  --name gpt-text-to-image \
-  -p 127.0.0.1:8090:8090 \
-  -e BASE_PATH=/image-studio \
-  -v $(pwd)/generated:/app/generated \
-  -v $(pwd)/data:/app/data \
-  --restart unless-stopped \
-  gpt-text-to-image:latest
+docker compose up -d --build
 ```
-如果通过 Nginx 反代到子路径，例如 `/image-studio/`，请设置 `BASE_PATH=/image-studio`。
+
+查看日志：
+
+```bash
+docker compose logs -f
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+`docker-compose.yml` 默认映射 `127.0.0.1:8090:8090`，挂载 `./generated` 和 `./data`，并设置 `BASE_PATH=/image-studio`、`OPENAI_BASE_URL=https://ai.wqwlkj.cn`。
+
+如果通过 Nginx 反代到子路径，例如 `/image-studio/`，请保持 `BASE_PATH=/image-studio`。
 
 ## 环境变量（可选，会覆盖默认值）
 - `OPENAI_BASE_URL`
