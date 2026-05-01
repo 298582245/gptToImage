@@ -14,4 +14,4 @@ RUN mkdir -p /app/generated /app/data
 
 EXPOSE 8090
 
-CMD ["gunicorn", "-w", "2", "-k", "gthread", "--threads", "4", "-b", "0.0.0.0:8090", "app:app"]
+CMD ["gunicorn", "-w", "1", "-k", "gthread", "--threads", "4", "-b", "0.0.0.0:8090", "app:app"]

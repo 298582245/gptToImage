@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>我的图片 - AI Image Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-stone-900">
+    <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <header class="flex flex-col gap-4 border-b border-stone-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-sm text-stone-500">{{ current_user.username }}</p>
+          <h1 class="mt-1 text-3xl font-semibold tracking-tight">我的生成记录</h1>
+        </div>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
+          {% if current_user.is_admin %}
+          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('admin_dashboard') }}">管理员后台</a>
+          {% endif %}
+        </div>
+      </header>
+
+      {% if images %}
+      <section class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {% for image in images %}
+        <article class="overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm">
+          <a href="{{ image.url }}" target="_blank" rel="noopener noreferrer" class="block">
+            <img src="{{ image.url }}" alt="生成图片" class="aspect-[4/5] w-full object-cover">
+          </a>
+          <div class="space-y-3 p-4">
+            <div class="flex items-center justify-between gap-3 text-xs text-stone-400">
+              <span class="rounded-full bg-stone-100 px-2.5 py-1 text-stone-600">{{ image.visibility }}</span>
+              <span>{{ image.created_at }}</span>
+            </div>
+            <h2 class="truncate text-sm font-medium text-stone-900">{{ image.model }}</h2>
+            <p class="line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
+            <a class="text-xs font-medium text-stone-900" href="{{ image.url }}" target="_blank" rel="noopener noreferrer">查看原图</a>
+          </div>
+        </article>
+        {% endfor %}
+      </section>
+      {% else %}
+      <section class="mt-8 rounded-[28px] border border-dashed border-stone-300 bg-white p-10 text-center">
+        <h2 class="text-xl font-semibold">还没有生成记录</h2>
+        <p class="mt-2 text-sm text-stone-500">登录状态下生成的图片会显示在这里。</p>
+        <a class="mt-5 inline-flex rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" href="{{ url_for('index') }}">去生成图片</a>
+      </section>
+      {% endif %}
+    </main>
+  </body>
+</html>
