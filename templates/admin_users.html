@@ -8,9 +8,18 @@
   <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
     <div>
       <h3 class="text-lg font-semibold">用户列表</h3>
-      <p class="mt-1 text-sm text-stone-500">每页 10 个用户，可编辑积分和密码，密码留空则不修改。</p>
+      <p class="mt-1 text-sm text-stone-500">可编辑积分和密码，密码留空则不修改。</p>
     </div>
-    <span class="text-xs text-stone-400">共 {{ pagination.total }} 个用户</span>
+    <form method="get" action="{{ url_for('admin_users') }}" class="flex items-center gap-2 text-sm">
+      <input type="hidden" name="page" value="1">
+      <span class="text-stone-500">每页</span>
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400" onchange="this.form.submit()">
+        {% for size in [10, 20, 50, 100] %}
+        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条</option>
+        {% endfor %}
+      </select>
+      <span class="text-xs text-stone-400">共 {{ pagination.total }} 个用户</span>
+    </form>
   </div>
 
   <div class="mt-5 overflow-hidden rounded-2xl border border-stone-100">
@@ -77,10 +86,14 @@
       <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
       <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_users', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
     </div>
-    <form method="get" action="{{ url_for('admin_users') }}" class="flex items-center gap-2 text-sm">
-      <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+    <form method="get" action="{{ url_for('admin_users') }}" class="flex flex-wrap items-center gap-2 text-sm">
       <span class="text-stone-500">跳转到</span>
       <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+        {% for size in [10, 20, 50, 100] %}
+        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+        {% endfor %}
+      </select>
       <button class="rounded-full bg-stone-900 px-4 py-2 text-white" type="submit">跳转</button>
     </form>
   </div>

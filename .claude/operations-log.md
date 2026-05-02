@@ -99,3 +99,9 @@
 - 操作：新增 redeem_codes、redeem_code_uses、recharge_settings 数据表；支持单人一次卡和多人上限卡；用户可输入卡密充值；管理员可批量生成、软删卡密并配置充值公告。
 - 修改：app.py, templates/index.html, templates/admin_layout.html, templates/recharge.html, templates/admin_redeem_codes.html。
 - 验证：仅做 rg 引用和关键代码文本检查；未安装依赖，未启动项目，未运行 Docker。
+
+## 2026-05-02 20:45（UTC+8） Codex
+- 任务：修复后台分页每页条数切换不保持，并优化卡密管理页布局。
+- 操作：用户页开放 10/20/50/100 条分页并保持 per_page；任务页切换每页条数回到第 1 页并保持 per_page；卡密页生成表单改为弹窗，卡密列表和最近使用记录改为 Tab 切换。
+- 修改：app.py, templates/admin_users.html, templates/admin_jobs.html, templates/admin_redeem_codes.html。
+- 验证：仅做文本静态检查，未运行项目。

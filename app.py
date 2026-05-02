@@ -1049,7 +1049,7 @@ def admin_provider():
 @app.route(route_path("/admin/users"))
 @admin_required
 def admin_users():
-    page, per_page = parse_page_params(10, (10,))
+    page, per_page = parse_page_params(10, (10, 20, 50, 100))
     users, pagination = load_users_page(page, per_page)
     return render_template(
         "admin_users.html",

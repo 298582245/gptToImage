@@ -15,6 +15,7 @@
 
   <form method="get" action="{{ url_for('admin_jobs') }}" class="mt-5 flex flex-col gap-3 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-end sm:justify-between">
     <label class="block text-sm text-stone-600">
+      <input type="hidden" name="page" value="1">
       <span class="mb-1 block text-xs text-stone-500">每页条数</span>
       <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-stone-400" onchange="this.form.submit()">
         {% for size in [5, 10, 20, 50] %}
@@ -23,7 +24,6 @@
       </select>
     </label>
     <div class="flex flex-wrap items-center gap-2 text-sm">
-      <input type="hidden" name="page" value="{{ pagination.page }}">
       <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_jobs', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
       <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
       <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_jobs', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>

@@ -4,11 +4,151 @@
 {% block heading %}卡密充值{% endblock %}
 
 {% block content %}
-<div class="mt-8 grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
-  <section class="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-    <h3 class="text-lg font-semibold">批量生成卡密</h3>
-    <p class="mt-1 text-sm text-stone-500">单人一次卡只能被一个用户使用；多人上限卡可设置最多多少个用户使用。</p>
-    <form method="post" action="{{ url_for('admin_redeem_codes_create') }}" class="mt-5 space-y-4">
+<section class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <h3 class="text-lg font-semibold">卡密充值管理</h3>
+      <p class="mt-1 text-sm text-stone-500">批量生成卡密、维护充值公告，并查看卡密列表和使用记录。</p>
+    </div>
+    <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="button" data-redeem-create-open>批量生成卡密</button>
+  </div>
+
+  <form method="post" action="{{ url_for('admin_recharge_notice_update') }}" class="mt-5 rounded-2xl bg-stone-50 p-4">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
+      <div class="lg:w-48">
+        <p class="text-sm font-medium text-stone-900">充值公告</p>
+        <p class="mt-1 text-xs leading-5 text-stone-500">展示在用户充值页，用来写购买地址或客服说明。</p>
+      </div>
+      <textarea name="notice" rows="4" class="min-h-28 flex-1 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm leading-7 outline-none focus:border-stone-400" placeholder="例如：卡密购买地址、客服联系方式、使用说明等。">{{ settings.notice }}</textarea>
+      <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="submit">保存公告</button>
+    </div>
+  </form>
+</section>
+
+{% if last_created_codes %}
+<section class="mt-6 rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h3 class="text-lg font-semibold text-emerald-950">刚刚生成的卡密</h3>
+      <p class="mt-1 text-sm text-emerald-700">请及时复制保存，刷新后这里不会继续单独展示。</p>
+    </div>
+    <button class="rounded-full bg-white px-4 py-2 text-sm text-emerald-800" type="button" data-copy-created>复制全部</button>
+  </div>
+  <textarea class="mt-4 h-40 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 font-mono text-sm outline-none" readonly data-created-codes>{% for code in last_created_codes %}{{ code.code_display }}
+{% endfor %}</textarea>
+</section>
+{% endif %}
+
+<section class="mt-6 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <h3 class="text-lg font-semibold">卡密数据</h3>
+      <p class="mt-1 text-sm text-stone-500">卡密列表和最近使用记录合并在这里切换查看。</p>
+    </div>
+    <div class="inline-flex rounded-full bg-stone-100 p-1 text-sm">
+      <button class="rounded-full bg-stone-900 px-4 py-2 text-white" type="button" data-redeem-tab-button="codes">卡密列表</button>
+      <button class="rounded-full px-4 py-2 text-stone-600" type="button" data-redeem-tab-button="uses">最近使用记录</button>
+    </div>
+  </div>
+
+  <div data-redeem-tab-panel="codes">
+    <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-stone-500">共 {{ pagination.total }} 张，删除为软删除，已使用记录保留。</p>
+      <form method="get" action="{{ url_for('admin_redeem_codes') }}" class="flex items-center gap-2 text-sm">
+        <input type="hidden" name="page" value="1">
+        <span class="text-stone-500">每页</span>
+        <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none" onchange="this.form.submit()">
+          {% for size in [10, 20, 50, 100] %}
+          <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+
+    <form method="post" action="{{ url_for('admin_redeem_codes_delete', page=pagination.page, per_page=pagination.per_page) }}" class="mt-4" onsubmit="return confirm('确定删除选中的卡密吗？')">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="overflow-x-auto rounded-2xl border border-stone-100">
+        <table class="min-w-full divide-y divide-stone-100 text-left text-sm">
+          <thead class="bg-stone-50 text-xs text-stone-500">
+            <tr>
+              <th class="px-4 py-3"><input type="checkbox" data-check-all></th>
+              <th class="px-4 py-3">卡密</th>
+              <th class="px-4 py-3">类型</th>
+              <th class="px-4 py-3">积分</th>
+              <th class="px-4 py-3">使用</th>
+              <th class="px-4 py-3">到期</th>
+              <th class="px-4 py-3">状态</th>
+              <th class="px-4 py-3">创建时间</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            {% for code in codes %}
+            <tr class="bg-white">
+              <td class="px-4 py-3"><input type="checkbox" name="code_ids" value="{{ code.id }}" data-code-check></td>
+              <td class="px-4 py-3 font-mono text-xs text-stone-700">{{ code.code_display }}</td>
+              <td class="px-4 py-3 text-stone-600">{{ code.type_label }}</td>
+              <td class="px-4 py-3 text-stone-600">{{ code.credits }}</td>
+              <td class="px-4 py-3 text-stone-600">{{ code.used_count }} / {{ code.max_uses }}</td>
+              <td class="px-4 py-3 text-stone-600">{{ code.expires_label }}</td>
+              <td class="px-4 py-3 text-stone-600">{{ code.status_label }}</td>
+              <td class="px-4 py-3 text-stone-500">{{ code.created_at }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="px-4 py-10 text-center text-stone-500">暂无卡密。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <button class="rounded-full bg-rose-50 px-4 py-2 text-sm text-rose-600" type="submit">删除选中</button>
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_redeem_codes', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+          <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_redeem_codes', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+        </div>
+      </div>
+    </form>
+
+    <form method="get" action="{{ url_for('admin_redeem_codes') }}" class="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
+      <span class="text-stone-500">跳转到</span>
+      <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+        {% for size in [10, 20, 50, 100] %}
+        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+        {% endfor %}
+      </select>
+      <button class="rounded-full bg-stone-900 px-4 py-2 text-white" type="submit">跳转</button>
+    </form>
+  </div>
+
+  <div class="mt-5 hidden space-y-3" data-redeem-tab-panel="uses">
+    {% for item in recent_uses %}
+    <div class="flex flex-col gap-2 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p class="text-sm font-medium">{{ item.username }} · {{ item.code_display }}</p>
+        <p class="mt-1 text-xs text-stone-500">{{ item.type_label }} · {{ item.used_at }}</p>
+      </div>
+      <span class="rounded-full bg-white px-3 py-1.5 text-sm text-stone-700">+{{ item.credits }} 积分</span>
+    </div>
+    {% else %}
+    <p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">暂无使用记录。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="fixed inset-0 z-50 hidden items-center justify-center bg-stone-950/50 px-4 py-6" data-redeem-create-modal>
+  <div class="w-full max-w-2xl rounded-[28px] bg-white p-6 shadow-2xl">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-stone-400">Redeem Codes</p>
+        <h3 class="mt-1 text-xl font-semibold">批量生成卡密</h3>
+        <p class="mt-1 text-sm text-stone-500">单人一次卡只能被一个用户使用，多人上限卡可设置最多多少个用户使用。</p>
+      </div>
+      <button class="rounded-full bg-stone-100 px-3 py-1.5 text-sm text-stone-500 hover:text-stone-950" type="button" data-redeem-create-close>关闭</button>
+    </div>
+
+    <form method="post" action="{{ url_for('admin_redeem_codes_create') }}" class="mt-6 space-y-4">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <label class="block">
         <span class="mb-2 block text-sm font-medium text-stone-600">卡密类型</span>
@@ -28,7 +168,7 @@
           <input type="number" min="1" max="200" name="count" value="10" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400">
         </label>
         <label class="block">
-        <span class="mb-2 block text-sm font-medium text-stone-600">使用上限（单人卡固定为 1）</span>
+          <span class="mb-2 block text-sm font-medium text-stone-600">使用上限（单人卡固定为 1）</span>
           <input type="number" min="1" name="max_uses" value="1" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400">
         </label>
       </div>
@@ -36,126 +176,47 @@
         <span class="mb-2 block text-sm font-medium text-stone-600">到期时间（留空永久）</span>
         <input type="datetime-local" name="expires_at" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400">
       </label>
-      <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="submit">生成卡密</button>
+      <div class="flex justify-end gap-2 pt-2">
+        <button class="rounded-full bg-stone-100 px-4 py-2 text-sm text-stone-600" type="button" data-redeem-create-close>取消</button>
+        <button class="rounded-full bg-stone-900 px-5 py-2 text-sm font-medium text-white" type="submit">生成卡密</button>
+      </div>
     </form>
-  </section>
-
-  <section class="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-    <h3 class="text-lg font-semibold">充值公告</h3>
-    <p class="mt-1 text-sm text-stone-500">这里填写购买说明、联系方式或卡密购买地址，会展示在用户充值页。</p>
-    <form method="post" action="{{ url_for('admin_recharge_notice_update') }}" class="mt-5 space-y-4">
-      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-      <textarea name="notice" rows="7" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-7 outline-none focus:border-stone-400" placeholder="例如：卡密购买地址、客服联系方式、使用说明等。">{{ settings.notice }}</textarea>
-      <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="submit">保存公告</button>
-    </form>
-  </section>
+  </div>
 </div>
 
-{% if last_created_codes %}
-<section class="mt-6 rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-      <h3 class="text-lg font-semibold text-emerald-950">刚刚生成的卡密</h3>
-      <p class="mt-1 text-sm text-emerald-700">请及时复制保存，刷新后这里不会继续单独展示。</p>
-    </div>
-    <button class="rounded-full bg-white px-4 py-2 text-sm text-emerald-800" type="button" data-copy-created>复制全部</button>
-  </div>
-  <textarea class="mt-4 h-40 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 font-mono text-sm outline-none" readonly data-created-codes>{% for code in last_created_codes %}{{ code.code_display }}
-{% endfor %}</textarea>
-</section>
-{% endif %}
-
-<section class="mt-6 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-  <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-    <div>
-      <h3 class="text-lg font-semibold">卡密列表</h3>
-      <p class="mt-1 text-sm text-stone-500">共 {{ pagination.total }} 张，删除为软删除，已使用记录保留。</p>
-    </div>
-    <form method="get" action="{{ url_for('admin_redeem_codes') }}" class="flex items-center gap-2 text-sm">
-      <input type="hidden" name="page" value="1">
-      <span class="text-stone-500">每页</span>
-      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none" onchange="this.form.submit()">
-        {% for size in [10, 20, 50, 100] %}
-        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }}</option>
-        {% endfor %}
-      </select>
-    </form>
-  </div>
-
-  <form method="post" action="{{ url_for('admin_redeem_codes_delete', page=pagination.page, per_page=pagination.per_page) }}" class="mt-5" onsubmit="return confirm('确定删除选中的卡密吗？')">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="overflow-x-auto rounded-2xl border border-stone-100">
-      <table class="min-w-full divide-y divide-stone-100 text-left text-sm">
-        <thead class="bg-stone-50 text-xs text-stone-500">
-          <tr>
-            <th class="px-4 py-3"><input type="checkbox" data-check-all></th>
-            <th class="px-4 py-3">卡密</th>
-            <th class="px-4 py-3">类型</th>
-            <th class="px-4 py-3">积分</th>
-            <th class="px-4 py-3">使用</th>
-            <th class="px-4 py-3">到期</th>
-            <th class="px-4 py-3">状态</th>
-            <th class="px-4 py-3">创建时间</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-stone-100">
-          {% for code in codes %}
-          <tr class="bg-white">
-            <td class="px-4 py-3"><input type="checkbox" name="code_ids" value="{{ code.id }}" data-code-check></td>
-            <td class="px-4 py-3 font-mono text-xs text-stone-700">{{ code.code_display }}</td>
-            <td class="px-4 py-3 text-stone-600">{{ code.type_label }}</td>
-            <td class="px-4 py-3 text-stone-600">{{ code.credits }}</td>
-            <td class="px-4 py-3 text-stone-600">{{ code.used_count }} / {{ code.max_uses }}</td>
-            <td class="px-4 py-3 text-stone-600">{{ code.expires_label }}</td>
-            <td class="px-4 py-3 text-stone-600">{{ code.status_label }}</td>
-            <td class="px-4 py-3 text-stone-500">{{ code.created_at }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="8" class="px-4 py-10 text-center text-stone-500">暂无卡密。</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <button class="rounded-full bg-rose-50 px-4 py-2 text-sm text-rose-600" type="submit">删除选中</button>
-      <div class="flex flex-wrap items-center gap-2 text-sm">
-        <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_redeem_codes', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
-        <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
-        <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_redeem_codes', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
-      </div>
-    </div>
-  </form>
-
-  <form method="get" action="{{ url_for('admin_redeem_codes') }}" class="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
-    <span class="text-stone-500">跳转到</span>
-    <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
-    <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
-      {% for size in [10, 20, 50, 100] %}
-      <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
-      {% endfor %}
-    </select>
-    <button class="rounded-full bg-stone-900 px-4 py-2 text-white" type="submit">跳转</button>
-  </form>
-</section>
-
-<section class="mt-6 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-  <h3 class="text-lg font-semibold">最近使用记录</h3>
-  <div class="mt-5 space-y-3">
-    {% for item in recent_uses %}
-    <div class="flex flex-col gap-2 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p class="text-sm font-medium">{{ item.username }} · {{ item.code_display }}</p>
-        <p class="mt-1 text-xs text-stone-500">{{ item.type_label }} · {{ item.used_at }}</p>
-      </div>
-      <span class="rounded-full bg-white px-3 py-1.5 text-sm text-stone-700">+{{ item.credits }} 积分</span>
-    </div>
-    {% else %}
-    <p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">暂无使用记录。</p>
-    {% endfor %}
-  </div>
-</section>
-
 <script>
+  const createModal = document.querySelector('[data-redeem-create-modal]');
+  const closeCreateModal = () => {
+    createModal?.classList.add('hidden');
+    createModal?.classList.remove('flex');
+  };
+  document.querySelector('[data-redeem-create-open]')?.addEventListener('click', () => {
+    createModal?.classList.remove('hidden');
+    createModal?.classList.add('flex');
+    createModal?.querySelector('input[name="credits"]')?.focus();
+  });
+  document.querySelectorAll('[data-redeem-create-close]').forEach((button) => {
+    button.addEventListener('click', closeCreateModal);
+  });
+  createModal?.addEventListener('click', (event) => {
+    if (event.target === createModal) closeCreateModal();
+  });
+
+  document.querySelectorAll('[data-redeem-tab-button]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.redeemTabButton;
+      document.querySelectorAll('[data-redeem-tab-button]').forEach((item) => {
+        const active = item.dataset.redeemTabButton === target;
+        item.classList.toggle('bg-stone-900', active);
+        item.classList.toggle('text-white', active);
+        item.classList.toggle('text-stone-600', !active);
+      });
+      document.querySelectorAll('[data-redeem-tab-panel]').forEach((panel) => {
+        panel.classList.toggle('hidden', panel.dataset.redeemTabPanel !== target);
+      });
+    });
+  });
+
   document.querySelector('[data-check-all]')?.addEventListener('change', (event) => {
     document.querySelectorAll('[data-code-check]').forEach((checkbox) => {
       checkbox.checked = event.target.checked;
