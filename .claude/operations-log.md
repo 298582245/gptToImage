@@ -123,3 +123,9 @@
 - 操作：新增本地 image-inspirer 分类路由表、案例读取和风格要点提取逻辑；将现有 polish_prompt 升级为基于灵感分类的 effective_prompt 生成；首页增加润色分类下拉和来源链接 https://github.com/wukongnotnull/image-inspirer。
 - 修改：app.py, templates/index.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 22:05（UTC+8） Codex
+- 任务：将图片审核页改为可隐藏违规图片，并支持可选封禁所属账号。
+- 操作：新增管理员隐藏/恢复图片 POST 路由；隐藏图片使用 images.visibility='hidden'，仅管理员可访问；用户侧图片、任务图片列表过滤 hidden；审核页增加状态、隐藏、恢复、同时封禁用户操作。
+- 修改：app.py, templates/admin_images.html。
+- 验证：仅做文本静态检查，未运行项目。

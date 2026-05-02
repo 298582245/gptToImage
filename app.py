@@ -997,7 +997,7 @@ def redeem_code_for_user(raw_code: str, user_id: int) -> dict:
 def load_recent_images(limit: int = 20) -> list[dict]:
     rows = get_db().execute(
         """
-        SELECT images.*, users.username
+        SELECT images.*, users.username, users.is_disabled AS user_is_disabled
         FROM images
         LEFT JOIN users ON users.id = images.user_id
         ORDER BY images.created_at DESC, images.id DESC
@@ -1171,6 +1171,62 @@ def admin_images():
         active_admin_page="images",
         recent_images=load_recent_images(limit=200),
     )
+
+
+@app.post(route_path("/admin/images/<int:image_id>/hide"))
+@admin_required
+def admin_image_hide(image_id: int):
+    if not validate_csrf_token():
+        abort(400)
+    try:
+        current = g.get("current_user")
+        db = get_db()
+        image = db.execute(
+            """
+            SELECT images.id, images.user_id, images.visibility, users.is_disabled
+            FROM images
+            LEFT JOIN users ON users.id = images.user_id
+            WHERE images.id = ?
+            """,
+            (image_id,),
+        ).fetchone()
+        if not image:
+            raise ValueError("图片不存在。")
+
+        db.execute("UPDATE images SET visibility = 'hidden' WHERE id = ?", (image_id,))
+        ban_user = request.form.get("ban_user") == "on"
+        ban_skipped = False
+        if ban_user and image["user_id"]:
+            if current and int(current["id"]) == int(image["user_id"]):
+                ban_skipped = True
+            else:
+                db.execute("UPDATE users SET is_disabled = 1 WHERE id = ?", (image["user_id"],))
+        db.commit()
+        flash("图片已隐藏，仅管理员可查看。" + (" 已跳过封禁当前管理员。" if ban_skipped else ""))
+    except Exception as exc:  # noqa: BLE001
+        get_db().rollback()
+        flash(f"隐藏图片失败：{exc}")
+    return redirect(url_for("admin_images"))
+
+
+@app.post(route_path("/admin/images/<int:image_id>/restore"))
+@admin_required
+def admin_image_restore(image_id: int):
+    if not validate_csrf_token():
+        abort(400)
+    try:
+        db = get_db()
+        image = db.execute("SELECT id, source FROM images WHERE id = ?", (image_id,)).fetchone()
+        if not image:
+            raise ValueError("图片不存在。")
+        restored_visibility = "private" if image["source"] == "builtin" else "public"
+        db.execute("UPDATE images SET visibility = ? WHERE id = ?", (restored_visibility, image_id))
+        db.commit()
+        flash("图片已恢复显示。")
+    except Exception as exc:  # noqa: BLE001
+        get_db().rollback()
+        flash(f"恢复图片失败：{exc}")
+    return redirect(url_for("admin_images"))
 
 
 @app.route(route_path("/admin/redeem-codes"))
@@ -1600,6 +1656,7 @@ def save_image(image_bytes: bytes, output_format: str) -> str:
 
 
 def image_row_to_dict(row: sqlite3.Row) -> dict:
+    visibility = row["visibility"]
     return {
         "id": row["id"],
         "url": url_for("generated_file", filename=row["filename"]),
@@ -1611,10 +1668,12 @@ def image_row_to_dict(row: sqlite3.Row) -> dict:
         "prompt_polished": bool(row["prompt_polished"]),
         "model": row["model"],
         "created_at": row["created_at"],
-        "visibility": row["visibility"],
+        "visibility": visibility,
+        "visibility_label": {"public": "公开", "private": "私有", "hidden": "已隐藏"}.get(visibility, visibility),
         "source": row["source"],
         "user_id": row["user_id"],
         "username": row["username"] if "username" in row.keys() else None,
+        "user_is_disabled": bool(row["user_is_disabled"]) if "user_is_disabled" in row.keys() and row["user_is_disabled"] is not None else False,
     }
 
 
@@ -1669,7 +1728,7 @@ def load_user_images(user_id: int, limit: int = 120) -> list[dict]:
         SELECT images.*, users.username
         FROM images
         LEFT JOIN users ON users.id = images.user_id
-        WHERE images.user_id = ?
+        WHERE images.user_id = ? AND images.visibility != 'hidden'
         ORDER BY images.created_at DESC, images.id DESC
         LIMIT ?
         """,
@@ -1878,7 +1937,7 @@ def load_job_images(job_id: int) -> list[dict]:
         SELECT images.*, users.username
         FROM images
         LEFT JOIN users ON users.id = images.user_id
-        WHERE images.job_id = ?
+        WHERE images.job_id = ? AND images.visibility != 'hidden'
         ORDER BY images.created_at ASC, images.id ASC
         """,
         (job_id,),
@@ -1901,7 +1960,7 @@ def load_custom_job_images(access_token: str) -> list[dict]:
         SELECT images.*, users.username
         FROM images
         LEFT JOIN users ON users.id = images.user_id
-        WHERE images.access_token = ?
+        WHERE images.access_token = ? AND images.visibility != 'hidden'
         ORDER BY images.created_at ASC, images.id ASC
         """,
         (access_token,),
@@ -2372,7 +2431,11 @@ def generated_file(filename: str):
         "SELECT id, filename, user_id, visibility FROM images WHERE filename = ?",
         (filename,),
     ).fetchone()
-    if row and row["visibility"] != "public":
+    if row and row["visibility"] == "hidden":
+        user = g.get("current_user")
+        if not user or not user.get("is_admin"):
+            abort(404)
+    elif row and row["visibility"] != "public":
         user = g.get("current_user")
         if not user or (not user.get("is_admin") and user["id"] != row["user_id"]):
             abort(404)
