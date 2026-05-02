@@ -44,6 +44,9 @@ HISTORY_FILE = DATA_DIR / "history.json"
 DATABASE_FILE = DATA_DIR / "app.sqlite3"
 SECRET_KEY_FILE = DATA_DIR / "secret.key"
 FERNET_KEY_FILE = DATA_DIR / "fernet.key"
+IMAGE_INSPIRER_DIR = BASE_DIR / "image-inspirer-main"
+IMAGE_INSPIRER_DB_DIR = IMAGE_INSPIRER_DIR / "db"
+IMAGE_INSPIRER_SOURCE_URL = "https://github.com/wukongnotnull/image-inspirer"
 
 DEFAULTS = {
     "base_url": os.getenv("OPENAI_BASE_URL", "https://ai.wqwlkj.cn"),
@@ -83,6 +86,94 @@ REDEEM_CODE_TYPES = {
     "single": "单人一次卡",
     "multi": "多人上限卡",
 }
+
+INSPIRER_CATEGORIES = [
+    {
+        "value": "auto",
+        "label": "自动识别",
+        "directory": "",
+        "keywords": (),
+    },
+    {
+        "value": "poster",
+        "label": "海报与排版",
+        "directory": "海报与排版",
+        "keywords": ("海报", "排版", "封面", "campaign", "宣传", "活动", "主视觉"),
+    },
+    {
+        "value": "ui",
+        "label": "UI 与界面",
+        "directory": "UI与界面",
+        "keywords": ("界面", "app", "网页", "ui", "手机", "后台", "仪表盘", "截图", "直播"),
+    },
+    {
+        "value": "infographic",
+        "label": "图表与信息可视化",
+        "directory": "图表与信息可视化",
+        "keywords": ("信息图", "图表", "可视化", "拆解", "图解", "科普", "流程"),
+    },
+    {
+        "value": "illustration",
+        "label": "插画与艺术",
+        "directory": "插画与艺术",
+        "keywords": ("插画", "漫画", "二次元", "动漫", "手绘", "水墨", "水彩", "艺术"),
+    },
+    {
+        "value": "photo",
+        "label": "摄影与写实",
+        "directory": "摄影与写实",
+        "keywords": ("摄影", "写实", "人像", "写真", "自拍", "时尚大片", "照片", "镜头"),
+    },
+    {
+        "value": "ecommerce",
+        "label": "商品与电商",
+        "directory": "商品与电商",
+        "keywords": ("电商", "商品", "产品", "详情页", "淘宝", "广告", "主图"),
+    },
+    {
+        "value": "brand",
+        "label": "品牌与标志",
+        "directory": "品牌与标志",
+        "keywords": ("logo", "品牌", "标志", "vi", "字体", "图标", "商标"),
+    },
+    {
+        "value": "character",
+        "label": "人物与角色",
+        "directory": "人物与角色",
+        "keywords": ("角色", "人物", "卡牌", "动作", "设定", "立绘", "头像"),
+    },
+    {
+        "value": "scene",
+        "label": "场景与叙事",
+        "directory": "场景与叙事",
+        "keywords": ("场景", "叙事", "电影感", "分镜", "故事", "镜头语言"),
+    },
+    {
+        "value": "architecture",
+        "label": "建筑与空间",
+        "directory": "建筑与空间",
+        "keywords": ("建筑", "室内", "空间", "城市", "地标", "房间", "家装"),
+    },
+    {
+        "value": "chinese",
+        "label": "历史与古风题材",
+        "directory": "历史与古风题材",
+        "keywords": ("古风", "历史", "朝代", "国潮", "汉服", "新中式", "传统"),
+    },
+    {
+        "value": "document",
+        "label": "文档与出版物",
+        "directory": "文档与出版物",
+        "keywords": ("文档", "杂志", "菜单", "报纸", "课本", "笔记", "出版物"),
+    },
+    {
+        "value": "creative",
+        "label": "其他应用场景",
+        "directory": "其他应用场景",
+        "keywords": ("创意", "合成", "趣味", "跨界", "搞笑", "混搭", "脑洞"),
+    },
+]
+INSPIRER_CATEGORY_BY_VALUE = {category["value"]: category for category in INSPIRER_CATEGORIES}
 
 WORKER_POLL_SECONDS = 2
 WORKER_LOCK = threading.Lock()
@@ -1400,15 +1491,83 @@ def to_bool(value: str) -> bool:
     return str(value).lower() in {"1", "true", "yes", "on"}
 
 
-def polish_prompt_text(prompt: str) -> str:
+def resolve_inspirer_category(prompt: str, category_value: str = "auto") -> dict:
+    selected = INSPIRER_CATEGORY_BY_VALUE.get(category_value) or INSPIRER_CATEGORY_BY_VALUE["auto"]
+    if selected["value"] != "auto":
+        return selected
+
+    lowered_prompt = prompt.lower()
+    for category in INSPIRER_CATEGORIES:
+        if category["value"] == "auto":
+            continue
+        if any(keyword.lower() in lowered_prompt for keyword in category["keywords"]):
+            return category
+    return INSPIRER_CATEGORY_BY_VALUE["creative"]
+
+
+def extract_inspirer_examples(category: dict, limit: int = 2) -> list[str]:
+    prompt_file = IMAGE_INSPIRER_DB_DIR / category["directory"] / "prompt.md"
+    if not prompt_file.exists():
+        return []
+    text = prompt_file.read_text(encoding="utf-8", errors="ignore")
+    chunks = [chunk.strip() for chunk in text.split("---") if len(chunk.strip()) > 120]
+    examples = []
+    for chunk in chunks:
+        lines = [line.strip() for line in chunk.splitlines() if line.strip()]
+        if not lines:
+            continue
+        content_lines = [line for line in lines if not line.startswith("**来源") and not line.startswith("![")]
+        example = " ".join(content_lines)[:360]
+        if example:
+            examples.append(example)
+        if len(examples) >= limit:
+            break
+    return examples
+
+
+def build_inspirer_style_hints(examples: list[str]) -> str:
+    text = "\n".join(examples)
+    candidates = [
+        ("电影", "电影感光影"),
+        ("海报", "海报级构图"),
+        ("留白", "克制留白"),
+        ("高级", "高级质感"),
+        ("写实", "写实细节"),
+        ("插画", "插画表现力"),
+        ("国潮", "国潮视觉"),
+        ("信息图", "信息层级清晰"),
+        ("产品", "产品主体突出"),
+        ("品牌", "品牌调性统一"),
+        ("光影", "明确光影层次"),
+        ("材质", "材质细节丰富"),
+        ("色彩", "色彩统一"),
+        ("文字", "文字清晰可读"),
+        ("8K", "高清细节"),
+    ]
+    hints = []
+    for keyword, hint in candidates:
+        if keyword in text and hint not in hints:
+            hints.append(hint)
+        if len(hints) >= 6:
+            break
+    return "、".join(hints) if hints else "主体明确、构图清晰、光影完整、风格统一、细节丰富"
+
+
+def polish_prompt_text(prompt: str, category_value: str = "auto") -> str:
     prompt = prompt.strip()
     if not prompt:
         return prompt
-    suffix = (
-        "。请在不改变主体和核心意图的前提下，补充清晰的构图描述、主体细节、光线、色彩、"
-        "材质、景深与画面质感，让结果更适合高质量图像生成。"
+    category = resolve_inspirer_category(prompt, category_value)
+    examples = extract_inspirer_examples(category)
+    style_hints = build_inspirer_style_hints(examples)
+
+    return (
+        f"{prompt}\n\n"
+        f"将以上需求优化为“{category['label']}”方向的高质量图像。"
+        f"风格参考要点：{style_hints}。"
+        "保持主体和核心意图不变，补充清晰构图、主体细节、环境空间、镜头视角、光线方向、色彩关系、材质、景深、画面质感和比例。"
+        "如果画面包含文字，要求文字清晰可读、排版稳定、不要乱码；避免多余水印、畸形肢体、过度拥挤、低清晰度和风格漂移。"
     )
-    return f"{prompt}{suffix}"
 
 
 def decode_image_payload(item, fallback_format: str) -> tuple[bytes, str]:
@@ -1611,7 +1770,7 @@ def create_builtin_job(form_values: dict) -> int:
     requested_n = max(1, min(int(form_values["n"]), 10))
     cost = int(config.get("price_per_image", 1)) * requested_n
     original_prompt = form_values["prompt"]
-    effective_prompt = polish_prompt_text(original_prompt) if form_values["polish_prompt"] else original_prompt
+    effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
 
     try:
         db.execute("BEGIN IMMEDIATE")
@@ -1656,7 +1815,7 @@ def create_custom_job(form_values: dict) -> str:
         raise ValueError("选择自定义模型时，请填写模型名称。")
 
     original_prompt = form_values["prompt"]
-    effective_prompt = polish_prompt_text(original_prompt) if form_values["polish_prompt"] else original_prompt
+    effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
     resolved_model = resolve_model_name(
         {
             "model": form_values["model_choice"],
@@ -2097,6 +2256,7 @@ def index():
         "style": "vivid",
         "n": DEFAULTS["n"],
         "polish_prompt": DEFAULTS["polish_prompt"],
+        "polish_category": "auto",
         "generation_mode": "custom",
     }
     images = []
@@ -2113,6 +2273,10 @@ def index():
         for key in form_values:
             if key == "polish_prompt":
                 form_values[key] = to_bool(request.form.get(key, ""))
+                continue
+            if key == "polish_category":
+                value = request.form.get(key, "auto").strip() or "auto"
+                form_values[key] = value if value in INSPIRER_CATEGORY_BY_VALUE else "auto"
                 continue
             if key == "model_choice":
                 form_values[key] = request.form.get("model", "").strip() or form_values[key]
@@ -2153,6 +2317,8 @@ def index():
         model_options=model_options,
         model_status=model_status,
         provider_config=get_provider_config(),
+        inspirer_categories=INSPIRER_CATEGORIES,
+        inspirer_source_url=IMAGE_INSPIRER_SOURCE_URL,
     )
 
 

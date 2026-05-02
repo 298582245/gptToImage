@@ -1,10 +1,12 @@
 # AI Image Studio
 
 原项目地址：<https://gitee.com/papamenu/gpt-text-to-image>，本项目基于该项目修改。
+提示词感谢项目：<https://github.com/wukongnotnull/image-inspirer>
 
 一个基于 Python + Flask 的生图工作台，使用 OpenAI Python SDK 调用官方图片生成接口，并兼容自定义 `Base URL`。
 
 ## 功能
+
 - 支持自定义 `Base URL`
 - 支持自定义 `API Key`
 - 自定义接口生成成功后，会在浏览器 `localStorage` 记住 `Base URL`、`API Key`、模型和自定义模型名
@@ -21,13 +23,16 @@
 - 页面里可直接预览，并查看本次请求参数
 
 ## 运行
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python app.py
 ```
+
 浏览器打开：
+
 ```text
 http://127.0.0.1:5000
 ```
@@ -57,11 +62,13 @@ docker compose down
 如果通过 Nginx 反代到子路径，例如 `/image-studio/`，请保持 `BASE_PATH=/image-studio`。
 
 ## 环境变量（可选，会覆盖默认值）
+
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_IMAGE_MODEL`
 
 ## 说明
+
 - 默认按照 OpenAI 官方图片生成接口格式发起请求。
 - 如果 `Base URL` 只填写域名，程序会自动补成 `/v1`。
 - 如果你填入兼容 OpenAI API 的第三方 `Base URL`，也可以直接复用这个界面。

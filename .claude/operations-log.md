@@ -117,3 +117,9 @@
 - 操作：删除首页左侧新建创作、连接配置、本次参数、共享画廊等侧栏内容和主容器双列布局；删除顶部 OpenAI Compatible/Public Gallery 标签；管理端充值公告改成点击“编辑公告”后在弹窗内修改。
 - 修改：templates/index.html, templates/admin_redeem_codes.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 21:31（UTC+8） Codex
+- 任务：按 image-inspirer-main 案例库接入本地提示词灵感润色。
+- 操作：新增本地 image-inspirer 分类路由表、案例读取和风格要点提取逻辑；将现有 polish_prompt 升级为基于灵感分类的 effective_prompt 生成；首页增加润色分类下拉和来源链接 https://github.com/wukongnotnull/image-inspirer。
+- 修改：app.py, templates/index.html。
+- 验证：仅做文本静态检查，未运行项目。

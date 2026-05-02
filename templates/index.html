@@ -271,7 +271,10 @@
                       <div class="flex items-start justify-between gap-4">
                         <div>
                           <p class="text-sm font-medium text-stone-900">提示词润色</p>
-                          <p class="mt-1 text-xs leading-5 text-stone-500">保留主题意图，自动补充构图、光影、质感和材质信息。</p>
+                          <p class="mt-1 text-xs leading-5 text-stone-500">
+                            基于本地 image-inspirer 灵感库优化提示词，保留主题意图并补充构图、光影、质感和避坑约束。
+                            <a class="text-stone-900 underline decoration-stone-300 underline-offset-4" href="{{ inspirer_source_url }}" target="_blank" rel="noopener noreferrer">润色来源</a>
+                          </p>
                         </div>
                         <label class="relative inline-flex cursor-pointer items-center">
                           <input id="polish_prompt" type="checkbox" name="polish_prompt" value="on" class="peer sr-only" {% if form_values.polish_prompt %}checked{% endif %}>
@@ -289,6 +292,17 @@
                           <label class="block">
                             <span class="mb-2 block text-xs font-medium text-stone-500">API Key</span>
                             <input id="api_key" type="password" name="api_key" placeholder="留空则使用系统默认密钥" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
+                          </label>
+                        </div>
+
+                        <div class="grid gap-2">
+                          <label class="block">
+                            <span class="mb-2 block text-xs font-medium text-stone-500">润色分类</span>
+                            <select id="polish_category" name="polish_category" class="field-select w-full appearance-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-300">
+                              {% for category in inspirer_categories %}
+                              <option value="{{ category.value }}" {% if form_values.polish_category == category.value %}selected{% endif %}>{{ category.label }}</option>
+                              {% endfor %}
+                            </select>
                           </label>
                         </div>
 
@@ -476,6 +490,8 @@
       const baseUrlInput = document.getElementById("base_url");
       const apiKeyInput = document.getElementById("api_key");
       const customModelInput = document.getElementById("custom_model");
+      const polishPromptInput = document.getElementById("polish_prompt");
+      const polishCategorySelect = document.getElementById("polish_category");
       const customConnectionPanel = document.getElementById("custom-connection-panel");
       const customCredentialsFields = document.getElementById("custom-credentials-fields");
       const customModelTools = document.getElementById("custom-model-tools");
@@ -626,11 +642,20 @@
         }
       };
 
+      const syncPolishUI = () => {
+        if (!polishCategorySelect || !polishPromptInput) return;
+        polishCategorySelect.disabled = !polishPromptInput.checked;
+        polishCategorySelect.classList.toggle("opacity-50", !polishPromptInput.checked);
+      };
+
       if (form) {
         promoteSuccessfulApiCredentials();
         hydrateSavedApiCredentials();
         hydratePendingApiCredentials();
         syncGenerationModeUI();
+        syncPolishUI();
+
+        polishPromptInput?.addEventListener("change", syncPolishUI);
 
         generationModeInputs.forEach((input) => {
           input.addEventListener("change", syncGenerationModeUI);
