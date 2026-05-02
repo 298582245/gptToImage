@@ -18,8 +18,9 @@
           {% set nav_items = [
             ('dashboard', '概览', 'admin_dashboard'),
             ('provider', '内置接口', 'admin_provider'),
-            ('users', '用户积分', 'admin_users'),
-            ('jobs', '生成任务', 'admin_jobs')
+            ('users', '用户管理', 'admin_users'),
+            ('jobs', '生成任务', 'admin_jobs'),
+            ('images', '图片审核', 'admin_images')
           ] %}
           <nav class="mt-8 grid gap-2 text-sm">
             {% for key, label, endpoint in nav_items %}
@@ -35,7 +36,7 @@
       </aside>
 
       <main class="px-4 py-8 sm:px-6 lg:px-8">
-        <div class="mx-auto max-w-7xl">
+        <div class="w-full">
           <header class="border-b border-stone-200 pb-6">
             <p class="text-sm text-stone-500">AI Image Studio</p>
             <h2 class="mt-1 text-3xl font-semibold tracking-tight">{% block heading %}管理员后台{% endblock %}</h2>

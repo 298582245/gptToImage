@@ -1,0 +1,41 @@
+{% extends "admin_layout.html" %}
+
+{% block title %}图片审核{% endblock %}
+{% block heading %}图片审核{% endblock %}
+
+{% block content %}
+<section class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h3 class="text-lg font-semibold">全部图片</h3>
+      <p class="mt-1 text-sm text-stone-500">管理员可查看公开图片和内置接口生成的私有图片，用于排查违规内容。</p>
+    </div>
+    <span class="text-xs text-stone-400">最多显示 {{ recent_images|length }} 条</span>
+  </div>
+
+  <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    {% for image in recent_images %}
+    <article class="overflow-hidden rounded-[24px] border border-stone-100 bg-stone-50">
+      <a href="{{ image.url }}" target="_blank" rel="noopener noreferrer" class="block">
+        <img src="{{ image.url }}" alt="生成图片" class="aspect-[4/5] w-full object-cover">
+      </a>
+      <div class="space-y-3 p-4">
+        <div>
+          <p class="truncate text-sm font-medium">{{ image.url }}</p>
+          <p class="mt-1 truncate text-xs text-stone-500">{{ image.created_at }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs text-stone-500">
+          <span class="rounded-full bg-white px-2.5 py-1">{{ image.source }}</span>
+          <span class="rounded-full bg-white px-2.5 py-1">{{ image.visibility }}</span>
+          <span class="rounded-full bg-white px-2.5 py-1">{{ image.username or '游客' }}</span>
+          <span class="rounded-full bg-white px-2.5 py-1">{{ image.model }}</span>
+        </div>
+        <p class="line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
+      </div>
+    </article>
+    {% else %}
+    <p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500 sm:col-span-2 xl:col-span-3">暂无图片。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

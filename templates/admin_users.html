@@ -1,49 +1,72 @@
 {% extends "admin_layout.html" %}
 
-{% block title %}用户积分{% endblock %}
-{% block heading %}用户积分{% endblock %}
+{% block title %}用户列表{% endblock %}
+{% block heading %}用户列表{% endblock %}
 
 {% block content %}
-<section class="mt-8 grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-  <div class="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-    <h3 class="text-lg font-semibold">积分调整</h3>
-    <form method="post" action="{{ url_for('admin_credits_update') }}" class="mt-5 space-y-4">
-      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-      <label class="block">
-        <span class="mb-2 block text-sm font-medium text-stone-600">用户</span>
-        <select name="user_id" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400">
-          {% for user in recent_users %}
-          <option value="{{ user.id }}">{{ user.username }}（{{ user.credits }} 积分）</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="block">
-        <span class="mb-2 block text-sm font-medium text-stone-600">调整数量</span>
-        <input type="number" name="amount" value="10" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400">
-      </label>
-      <label class="block">
-        <span class="mb-2 block text-sm font-medium text-stone-600">原因</span>
-        <input name="reason" value="管理员调整积分" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400">
-      </label>
-      <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="submit">提交调整</button>
-    </form>
+<section class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h3 class="text-lg font-semibold">用户列表</h3>
+      <p class="mt-1 text-sm text-stone-500">每页 10 个用户，可编辑积分和密码，密码留空则不修改。</p>
+    </div>
+    <span class="text-xs text-stone-400">共 {{ pagination.total }} 个用户</span>
   </div>
 
-  <div class="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-    <h3 class="text-lg font-semibold">用户列表</h3>
-    <div class="mt-4 overflow-hidden rounded-2xl border border-stone-100">
-      {% for user in recent_users %}
-      <div class="grid gap-2 border-b border-stone-100 bg-stone-50 p-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <div class="min-w-0">
+  <div class="mt-5 overflow-hidden rounded-2xl border border-stone-100">
+    {% for user in users %}
+    <div class="grid gap-4 border-b border-stone-100 bg-stone-50 p-4 last:border-b-0 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] xl:items-start">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
           <p class="truncate text-sm font-medium">{{ user.username }}</p>
-          <p class="mt-1 text-xs text-stone-500">注册时间：{{ user.created_at }}{% if user.is_admin %} · 管理员{% endif %}</p>
+          {% if user.is_admin %}<span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-500">管理员</span>{% endif %}
+          {% if user.is_disabled %}<span class="rounded-full bg-rose-50 px-2.5 py-1 text-xs text-rose-600">已禁用</span>{% endif %}
         </div>
-        <span class="rounded-full bg-white px-3 py-1.5 text-sm text-stone-600">{{ user.credits }} 积分</span>
+        <p class="mt-2 text-xs text-stone-500">ID：{{ user.id }} · 注册时间：{{ user.created_at }} · 当前积分：{{ user.credits }}</p>
       </div>
-      {% else %}
-      <p class="p-6 text-sm text-stone-500">暂无用户。</p>
-      {% endfor %}
+
+      <div class="grid gap-3">
+        <form method="post" action="{{ url_for('admin_user_edit', user_id=user.id, page=pagination.page, per_page=pagination.per_page) }}" class="grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)_auto] sm:items-end">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <label class="block">
+            <span class="mb-1 block text-xs text-stone-500">积分</span>
+            <input type="number" name="credits" value="{{ user.credits }}" class="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-stone-400">
+          </label>
+          <label class="block">
+            <span class="mb-1 block text-xs text-stone-500">新密码（留空不修改）</span>
+            <input type="password" name="password" class="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-stone-400">
+          </label>
+          <button class="rounded-full bg-stone-900 px-4 py-2 text-sm font-medium text-white" type="submit">编辑</button>
+        </form>
+        <div class="flex flex-wrap gap-2">
+          <form method="post" action="{{ url_for('admin_user_toggle', user_id=user.id, page=pagination.page, per_page=pagination.per_page) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button class="rounded-full bg-white px-4 py-2 text-sm text-stone-700" type="submit">{% if user.is_disabled %}启用{% else %}禁用{% endif %}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin_user_delete', user_id=user.id, page=pagination.page, per_page=pagination.per_page) }}" onsubmit="return confirm('确定删除这个用户吗？相关积分流水和内置任务也会删除。')">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button class="rounded-full bg-rose-50 px-4 py-2 text-sm text-rose-600" type="submit">删除</button>
+          </form>
+        </div>
+      </div>
     </div>
+    {% else %}
+    <p class="p-8 text-center text-sm text-stone-500">暂无用户。</p>
+    {% endfor %}
+  </div>
+
+  <div class="mt-5 flex flex-col gap-3 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_users', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+      <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_users', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+    </div>
+    <form method="get" action="{{ url_for('admin_users') }}" class="flex items-center gap-2 text-sm">
+      <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+      <span class="text-stone-500">跳转到</span>
+      <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+      <button class="rounded-full bg-stone-900 px-4 py-2 text-white" type="submit">跳转</button>
+    </form>
   </div>
 </section>
 {% endblock %}

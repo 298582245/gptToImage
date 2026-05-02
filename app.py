@@ -142,6 +142,7 @@ def init_database() -> None:
                 password_hash TEXT NOT NULL,
                 credits INTEGER NOT NULL DEFAULT 0,
                 is_admin INTEGER NOT NULL DEFAULT 0,
+                is_disabled INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             );
 
@@ -251,6 +252,7 @@ def init_database() -> None:
                 ON credit_ledger (user_id, created_at DESC, id DESC);
             """
         )
+        ensure_column(db, "users", "is_disabled", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "images", "job_id", "INTEGER")
         ensure_column(db, "images", "access_token", "TEXT")
         db.execute("CREATE INDEX IF NOT EXISTS idx_images_access_token ON images (access_token)")
@@ -336,7 +338,7 @@ def now_text() -> str:
 
 def get_user_by_id(user_id: int) -> dict | None:
     row = get_db().execute(
-        "SELECT id, username, credits, is_admin, created_at FROM users WHERE id = ?",
+        "SELECT id, username, credits, is_admin, is_disabled, created_at FROM users WHERE id = ?",
         (user_id,),
     ).fetchone()
     return dict(row) if row else None
@@ -344,7 +346,7 @@ def get_user_by_id(user_id: int) -> dict | None:
 
 def get_user_with_password(username: str) -> sqlite3.Row | None:
     return get_db().execute(
-        "SELECT id, username, password_hash, credits, is_admin, created_at FROM users WHERE username = ?",
+        "SELECT id, username, password_hash, credits, is_admin, is_disabled, created_at FROM users WHERE username = ?",
         (username,),
     ).fetchone()
 
@@ -414,7 +416,11 @@ def load_current_user() -> None:
     g.current_user = None
     user_id = session.get("user_id")
     if user_id is not None:
-        g.current_user = get_user_by_id(int(user_id))
+        user = get_user_by_id(int(user_id))
+        if user and user.get("is_disabled"):
+            session.clear()
+            return
+        g.current_user = user
 
 
 @app.context_processor
@@ -451,6 +457,9 @@ def login():
         password = request.form.get("password", "")
         user = get_user_with_password(username)
         if user and check_password_hash(user["password_hash"], password):
+            if user["is_disabled"]:
+                error = "账号已被禁用，请联系管理员。"
+                return render_template("auth.html", mode="login", error=error)
             session.clear()
             session["user_id"] = user["id"]
             get_csrf_token()
@@ -567,12 +576,41 @@ def admin_stats(db: sqlite3.Connection) -> dict:
     }
 
 
-def load_recent_users(limit: int = 20) -> list[dict]:
-    rows = get_db().execute(
-        "SELECT id, username, credits, is_admin, created_at FROM users ORDER BY id DESC LIMIT ?",
-        (limit,),
+def parse_page_params(default_per_page: int, allowed_per_page: tuple[int, ...]) -> tuple[int, int]:
+    page = max(1, request.args.get("page", default=1, type=int) or 1)
+    per_page = request.args.get("per_page", default=default_per_page, type=int) or default_per_page
+    if per_page not in allowed_per_page:
+        per_page = default_per_page
+    return page, per_page
+
+
+def pagination_meta(total: int, page: int, per_page: int) -> dict:
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(1, page), total_pages)
+    return {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+    }
+
+
+def load_users_page(page: int, per_page: int) -> tuple[list[dict], dict]:
+    db = get_db()
+    total = int(db.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+    meta = pagination_meta(total, page, per_page)
+    rows = db.execute(
+        """
+        SELECT id, username, credits, is_admin, is_disabled, created_at
+        FROM users
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (meta["per_page"], (meta["page"] - 1) * meta["per_page"]),
     ).fetchall()
-    return [dict(row) for row in rows]
+    return [dict(row) for row in rows], meta
 
 
 def load_recent_images(limit: int = 20) -> list[dict]:
@@ -634,6 +672,67 @@ def load_admin_jobs(limit: int = 80) -> list[dict]:
     return sorted(jobs, key=lambda item: (item["created_at"], item["id"]), reverse=True)[:limit]
 
 
+def load_admin_jobs_page(page: int, per_page: int) -> tuple[list[dict], dict]:
+    db = get_db()
+    total = int(
+        db.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM generation_jobs) +
+                (SELECT COUNT(*) FROM custom_generation_jobs)
+            """
+        ).fetchone()[0]
+    )
+    meta = pagination_meta(total, page, per_page)
+    rows = db.execute(
+        """
+        SELECT * FROM (
+            SELECT jobs.id AS id, NULL AS access_token, jobs.user_id AS user_id,
+                   jobs.status AS status, jobs.prompt AS prompt,
+                   jobs.effective_prompt AS effective_prompt,
+                   jobs.prompt_polished AS prompt_polished, jobs.model AS model,
+                   jobs.size AS size, jobs.quality AS quality, jobs.background AS background,
+                   jobs.output_format AS output_format, jobs.style AS style, jobs.n AS n,
+                   jobs.cost AS cost, jobs.error_message AS error_message,
+                   jobs.attempts AS attempts, jobs.created_at AS created_at,
+                   jobs.started_at AS started_at, jobs.completed_at AS completed_at,
+                   users.username AS username, COUNT(images.id) AS image_count,
+                   'builtin' AS mode, '内置接口' AS mode_label
+            FROM generation_jobs AS jobs
+            JOIN users ON users.id = jobs.user_id
+            LEFT JOIN images ON images.job_id = jobs.id
+            GROUP BY jobs.id
+            UNION ALL
+            SELECT jobs.id AS id, jobs.access_token AS access_token, jobs.user_id AS user_id,
+                   jobs.status AS status, jobs.prompt AS prompt,
+                   jobs.effective_prompt AS effective_prompt,
+                   jobs.prompt_polished AS prompt_polished, jobs.model AS model,
+                   jobs.size AS size, jobs.quality AS quality, jobs.background AS background,
+                   jobs.output_format AS output_format, jobs.style AS style, jobs.n AS n,
+                   0 AS cost, jobs.error_message AS error_message,
+                   jobs.attempts AS attempts, jobs.created_at AS created_at,
+                   jobs.started_at AS started_at, jobs.completed_at AS completed_at,
+                   COALESCE(users.username, '游客') AS username, COUNT(images.id) AS image_count,
+                   'custom' AS mode, '自定义接口' AS mode_label
+            FROM custom_generation_jobs AS jobs
+            LEFT JOIN users ON users.id = jobs.user_id
+            LEFT JOIN images ON images.access_token = jobs.access_token
+            GROUP BY jobs.id
+        ) AS merged_jobs
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (meta["per_page"], (meta["page"] - 1) * meta["per_page"]),
+    ).fetchall()
+    jobs = []
+    for row in rows:
+        job = dict(row)
+        job["status_label"] = JOB_STATUS_LABELS.get(job["status"], job["status"])
+        job["prompt_polished"] = bool(job["prompt_polished"])
+        jobs.append(job)
+    return jobs, meta
+
+
 @app.route(route_path("/admin"))
 @admin_required
 def admin_dashboard():
@@ -642,8 +741,8 @@ def admin_dashboard():
         "admin_dashboard.html",
         active_admin_page="dashboard",
         stats=admin_stats(db),
-        recent_images=load_recent_images(limit=12),
-        recent_jobs=load_admin_jobs(limit=12),
+        recent_images=load_recent_images(limit=5),
+        recent_jobs=load_admin_jobs(limit=5),
     )
 
 
@@ -660,21 +759,115 @@ def admin_provider():
 @app.route(route_path("/admin/users"))
 @admin_required
 def admin_users():
+    page, per_page = parse_page_params(10, (10,))
+    users, pagination = load_users_page(page, per_page)
     return render_template(
         "admin_users.html",
         active_admin_page="users",
-        recent_users=load_recent_users(limit=80),
+        users=users,
+        pagination=pagination,
     )
 
 
 @app.route(route_path("/admin/jobs"))
 @admin_required
 def admin_jobs():
+    page, per_page = parse_page_params(5, (5, 10, 20, 50))
+    jobs, pagination = load_admin_jobs_page(page, per_page)
     return render_template(
         "admin_jobs.html",
         active_admin_page="jobs",
-        recent_jobs=load_admin_jobs(limit=120),
+        recent_jobs=jobs,
+        pagination=pagination,
     )
+
+
+@app.route(route_path("/admin/images"))
+@admin_required
+def admin_images():
+    return render_template(
+        "admin_images.html",
+        active_admin_page="images",
+        recent_images=load_recent_images(limit=200),
+    )
+
+
+@app.post(route_path("/admin/users/<int:user_id>/edit"))
+@admin_required
+def admin_user_edit(user_id: int):
+    if not validate_csrf_token():
+        abort(400)
+    credits = request.form.get("credits", type=int)
+    password = request.form.get("password", "")
+    try:
+        if credits is None:
+            raise ValueError("请填写积分。")
+        if credits < 0:
+            raise ValueError("积分不能小于 0。")
+        db = get_db()
+        user = db.execute("SELECT id, credits FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            raise ValueError("用户不存在。")
+        if credits != int(user["credits"]):
+            add_credit_ledger(db, user_id, credits - int(user["credits"]), "管理员编辑用户积分")
+        new_password = password.strip()
+        if new_password:
+            if len(new_password) < 8:
+                raise ValueError("新密码至少需要 8 位。")
+            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (generate_password_hash(new_password), user_id))
+        db.commit()
+        flash("用户信息已更新。")
+    except Exception as exc:  # noqa: BLE001
+        get_db().rollback()
+        flash(f"用户更新失败：{exc}")
+    return redirect(url_for("admin_users", page=request.args.get("page", 1), per_page=request.args.get("per_page", 10)))
+
+
+@app.post(route_path("/admin/users/<int:user_id>/toggle"))
+@admin_required
+def admin_user_toggle(user_id: int):
+    if not validate_csrf_token():
+        abort(400)
+    try:
+        current = g.get("current_user")
+        if current and current["id"] == user_id:
+            raise ValueError("不能禁用当前登录的管理员账号。")
+        db = get_db()
+        user = db.execute("SELECT id, is_disabled FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            raise ValueError("用户不存在。")
+        new_value = 0 if user["is_disabled"] else 1
+        db.execute("UPDATE users SET is_disabled = ? WHERE id = ?", (new_value, user_id))
+        db.commit()
+        flash("用户状态已更新。")
+    except Exception as exc:  # noqa: BLE001
+        get_db().rollback()
+        flash(f"用户状态更新失败：{exc}")
+    return redirect(url_for("admin_users", page=request.args.get("page", 1), per_page=request.args.get("per_page", 10)))
+
+
+@app.post(route_path("/admin/users/<int:user_id>/delete"))
+@admin_required
+def admin_user_delete(user_id: int):
+    if not validate_csrf_token():
+        abort(400)
+    try:
+        current = g.get("current_user")
+        if current and current["id"] == user_id:
+            raise ValueError("不能删除当前登录的管理员账号。")
+        db = get_db()
+        user = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            raise ValueError("用户不存在。")
+        db.execute("UPDATE images SET user_id = NULL WHERE user_id = ?", (user_id,))
+        db.execute("UPDATE custom_generation_jobs SET user_id = NULL WHERE user_id = ?", (user_id,))
+        db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        db.commit()
+        flash("用户已删除。")
+    except Exception as exc:  # noqa: BLE001
+        get_db().rollback()
+        flash(f"用户删除失败：{exc}")
+    return redirect(url_for("admin_users", page=request.args.get("page", 1), per_page=request.args.get("per_page", 10)))
 
 
 @app.post(route_path("/admin/provider"))
@@ -688,24 +881,6 @@ def admin_provider_update():
     except Exception as exc:  # noqa: BLE001
         flash(f"保存失败：{exc}")
     return redirect(url_for("admin_provider"))
-
-
-@app.post(route_path("/admin/credits"))
-@admin_required
-def admin_credits_update():
-    if not validate_csrf_token():
-        abort(400)
-    user_id = request.form.get("user_id", type=int)
-    amount = request.form.get("amount", type=int)
-    reason = request.form.get("reason", "管理员调整积分").strip()
-    try:
-        if user_id is None or amount is None:
-            raise ValueError("请选择用户并填写积分数量。")
-        admin_adjust_credits(user_id, amount, reason)
-        flash("积分已调整。")
-    except Exception as exc:  # noqa: BLE001
-        flash(f"积分调整失败：{exc}")
-    return redirect(url_for("admin_users"))
 
 
 @app.post(route_path("/admin/jobs/<int:job_id>/cancel"))
@@ -1055,12 +1230,6 @@ def add_credit_ledger(db: sqlite3.Connection, user_id: int, amount: int, reason:
         (user_id, job_id, amount, balance_after, reason, now_text()),
     )
     return balance_after
-
-
-def admin_adjust_credits(user_id: int, amount: int, reason: str) -> None:
-    db = get_db()
-    add_credit_ledger(db, user_id, amount, reason or "管理员调整积分")
-    db.commit()
 
 
 def user_active_jobs_count(db: sqlite3.Connection, user_id: int) -> int:

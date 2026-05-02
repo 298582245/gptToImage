@@ -10,8 +10,25 @@
       <h3 class="text-lg font-semibold">任务记录</h3>
       <p class="mt-1 text-sm text-stone-500">展示内置接口和自定义接口任务，只保留必要生成信息，不展示 API 或 Key。</p>
     </div>
-    <span class="text-xs text-stone-400">共展示 {{ recent_jobs|length }} 条</span>
+    <span class="text-xs text-stone-400">共 {{ pagination.total }} 条 · 当前页 {{ recent_jobs|length }} 条</span>
   </div>
+
+  <form method="get" action="{{ url_for('admin_jobs') }}" class="mt-5 flex flex-col gap-3 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-end sm:justify-between">
+    <label class="block text-sm text-stone-600">
+      <span class="mb-1 block text-xs text-stone-500">每页条数</span>
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-stone-400" onchange="this.form.submit()">
+        {% for size in [5, 10, 20, 50] %}
+        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <input type="hidden" name="page" value="{{ pagination.page }}">
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_jobs', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+      <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_jobs', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+    </div>
+  </form>
 
   <div class="mt-5 space-y-3">
     {% for job in recent_jobs %}
@@ -50,6 +67,24 @@
     {% else %}
     <p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">暂无任务。</p>
     {% endfor %}
+  </div>
+
+  <div class="mt-5 flex flex-col gap-3 rounded-2xl bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_jobs', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+      <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_jobs', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+    </div>
+    <form method="get" action="{{ url_for('admin_jobs') }}" class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="text-stone-500">跳转到</span>
+      <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+        {% for size in [5, 10, 20, 50] %}
+        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+        {% endfor %}
+      </select>
+      <button class="rounded-full bg-stone-900 px-4 py-2 text-white" type="submit">跳转</button>
+    </form>
   </div>
 </section>
 {% endblock %}
