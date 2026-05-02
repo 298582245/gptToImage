@@ -267,6 +267,10 @@ def init_database() -> None:
                 base_url TEXT NOT NULL DEFAULT '',
                 api_key_encrypted TEXT NOT NULL DEFAULT '',
                 model TEXT NOT NULL DEFAULT 'gpt-image-1',
+                polish_base_url TEXT NOT NULL DEFAULT '',
+                polish_api_key_encrypted TEXT NOT NULL DEFAULT '',
+                polish_model TEXT NOT NULL DEFAULT '',
+                polish_enabled INTEGER NOT NULL DEFAULT 0,
                 price_per_image INTEGER NOT NULL DEFAULT 1,
                 enabled INTEGER NOT NULL DEFAULT 0,
                 max_concurrent_jobs INTEGER NOT NULL DEFAULT 1,
@@ -387,6 +391,10 @@ def init_database() -> None:
         ensure_column(db, "users", "is_disabled", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "images", "job_id", "INTEGER")
         ensure_column(db, "images", "access_token", "TEXT")
+        ensure_column(db, "provider_configs", "polish_base_url", "TEXT NOT NULL DEFAULT ''")
+        ensure_column(db, "provider_configs", "polish_api_key_encrypted", "TEXT NOT NULL DEFAULT ''")
+        ensure_column(db, "provider_configs", "polish_model", "TEXT NOT NULL DEFAULT ''")
+        ensure_column(db, "provider_configs", "polish_enabled", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "redeem_codes", "batch_id", "TEXT NOT NULL DEFAULT ''")
         db.execute("CREATE INDEX IF NOT EXISTS idx_images_access_token ON images (access_token)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch ON redeem_codes (batch_id)")
@@ -1609,6 +1617,23 @@ def build_inspirer_style_hints(examples: list[str]) -> str:
     return "、".join(hints) if hints else "主体明确、构图清晰、光影完整、风格统一、细节丰富"
 
 
+def infer_prompt_scene_hints(prompt: str) -> list[str]:
+    prompt_lower = prompt.lower()
+    rules = [
+        (("美女", "女孩", "女生", "人物", "肖像", "人像", "模特", "woman", "girl", "portrait"), "人物气质自然，姿态舒展，表情真实，服饰与场景协调"),
+        (("狗", "犬", "猫", "宠物", "动物", "dog", "cat", "pet"), "宠物动作自然，毛发质感清晰，与人物形成互动关系"),
+        (("上海", "外滩", "陆家嘴", "城市", "街道", "都市", "city", "street"), "城市地标和空间层次清楚，背景建筑具有地域辨识度"),
+        (("十年后", "未来", "科幻", "future", "futuristic"), "加入克制的未来感细节，避免过度科幻化"),
+        (("散步", "漫步", "走路", "walk", "walking"), "采用生活纪实感瞬间，步行动势自然，画面有叙事感"),
+        (("黄昏", "夕阳", "夜景", "清晨", "雨", "雪", "sunset", "night"), "明确时间氛围和光线方向，增强环境情绪"),
+    ]
+    hints = []
+    for keywords, hint in rules:
+        if any(keyword in prompt_lower or keyword in prompt for keyword in keywords):
+            hints.append(hint)
+    return hints
+
+
 def polish_prompt_text(prompt: str, category_value: str = "auto") -> str:
     prompt = prompt.strip()
     if not prompt:
@@ -1616,14 +1641,47 @@ def polish_prompt_text(prompt: str, category_value: str = "auto") -> str:
     category = resolve_inspirer_category(prompt, category_value)
     examples = extract_inspirer_examples(category)
     style_hints = build_inspirer_style_hints(examples)
+    scene_hints = infer_prompt_scene_hints(prompt)
+    detail_sentence = "，".join(scene_hints) if scene_hints else "主体关系明确，构图清晰，环境空间完整，细节真实丰富"
 
     return (
-        f"{prompt}\n\n"
-        f"将以上需求优化为“{category['label']}”方向的高质量图像。"
-        f"风格参考要点：{style_hints}。"
-        "保持主体和核心意图不变，补充清晰构图、主体细节、环境空间、镜头视角、光线方向、色彩关系、材质、景深、画面质感和比例。"
-        "如果画面包含文字，要求文字清晰可读、排版稳定、不要乱码；避免多余水印、畸形肢体、过度拥挤、低清晰度和风格漂移。"
+        f"{prompt}。"
+        f"画面方向：{category['label']}；{detail_sentence}。"
+        f"视觉风格：{style_hints}，电影感构图，真实光影，高质量细节，色彩协调，主体突出，背景不杂乱。"
+        "镜头要求：中景到全景视角，空间层次清晰，适度景深，画面比例稳定。"
+        "负面约束：不要水印、不要乱码文字、不要畸形肢体、不要低清晰度、不要过度拥挤、不要风格漂移。"
     )
+
+
+def polish_prompt_with_ai(prompt: str, category_value: str = "auto") -> str:
+    prompt = prompt.strip()
+    if not prompt:
+        return prompt
+    config = get_provider_config(include_secret=True)
+    if not config.get("polish_enabled") or not config.get("polish_api_key") or not config.get("polish_base_url") or not config.get("polish_model"):
+        raise ValueError("管理员暂未配置可用的 AI 润色接口。")
+
+    category = resolve_inspirer_category(prompt, category_value)
+    client = build_client(config["polish_api_key"], config["polish_base_url"])
+    system_prompt = (
+        "你是专业图像生成提示词优化器。请把用户中文需求改写成最终可直接发送给生图模型的中文提示词。"
+        "只输出润色后的提示词，不要解释、不要标题、不要 Markdown。保持主体和核心意图不变，补充构图、主体细节、环境、镜头、光线、色彩、材质、景深和画质要求。"
+        "不要编造与原需求冲突的内容，不要加入水印、乱码文字、畸形肢体、低清晰度等负面元素。"
+    )
+    user_prompt = f"原始提示词：{prompt}\n润色方向：{category['label']}"
+    response = client.chat.completions.create(
+        model=config["polish_model"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.7,
+    )
+    content = response.choices[0].message.content if response.choices else ""
+    polished = (content or "").strip().strip('"“”')
+    if not polished:
+        raise ValueError("AI 润色接口没有返回有效提示词。")
+    return polished
 
 
 def decode_image_payload(item, fallback_format: str) -> tuple[bytes, str]:
@@ -1743,16 +1801,22 @@ def get_provider_config(include_secret: bool = False, db: sqlite3.Connection | N
     row = connection.execute("SELECT * FROM provider_configs WHERE id = 1").fetchone()
     config = dict(row) if row else {}
     api_key_encrypted = config.pop("api_key_encrypted", "")
+    polish_api_key_encrypted = config.pop("polish_api_key_encrypted", "")
     config["has_api_key"] = bool(api_key_encrypted)
     config["api_key_masked"] = "已设置" if api_key_encrypted else "未设置"
+    config["has_polish_api_key"] = bool(polish_api_key_encrypted)
+    config["polish_api_key_masked"] = "已设置" if polish_api_key_encrypted else "未设置"
     if include_secret:
         config["api_key"] = decrypt_secret(api_key_encrypted)
+        config["polish_api_key"] = decrypt_secret(polish_api_key_encrypted)
     return config
 
 
 def update_provider_config(form_data) -> None:
     keep_existing_key = form_data.get("keep_existing_key") == "on"
+    keep_existing_polish_key = form_data.get("keep_existing_polish_key") == "on"
     api_key = form_data.get("api_key", "").strip()
+    polish_api_key = form_data.get("polish_api_key", "").strip()
     current = get_provider_config(db=get_db())
     encrypted_key = None
     if api_key:
@@ -1763,6 +1827,15 @@ def update_provider_config(form_data) -> None:
     else:
         encrypted_key = ""
 
+    encrypted_polish_key = None
+    if polish_api_key:
+        encrypted_polish_key = encrypt_secret(polish_api_key)
+    elif keep_existing_polish_key and current.get("has_polish_api_key"):
+        row = get_db().execute("SELECT polish_api_key_encrypted FROM provider_configs WHERE id = 1").fetchone()
+        encrypted_polish_key = row["polish_api_key_encrypted"]
+    else:
+        encrypted_polish_key = ""
+
     max_concurrent_jobs = max(1, min(int(form_data.get("max_concurrent_jobs", 1) or 1), 5))
     per_user_pending_limit = max(1, min(int(form_data.get("per_user_pending_limit", 3) or 3), 20))
     price_per_image = max(0, int(form_data.get("price_per_image", 1) or 0))
@@ -1771,6 +1844,7 @@ def update_provider_config(form_data) -> None:
         """
         UPDATE provider_configs
         SET base_url = ?, api_key_encrypted = ?, model = ?, price_per_image = ?,
+            polish_base_url = ?, polish_api_key_encrypted = ?, polish_model = ?, polish_enabled = ?,
             enabled = ?, max_concurrent_jobs = ?, per_user_pending_limit = ?, updated_at = ?
         WHERE id = 1
         """,
@@ -1779,6 +1853,10 @@ def update_provider_config(form_data) -> None:
             encrypted_key,
             form_data.get("model", "gpt-image-1").strip() or "gpt-image-1",
             price_per_image,
+            form_data.get("polish_base_url", "").strip(),
+            encrypted_polish_key,
+            form_data.get("polish_model", "").strip(),
+            1 if form_data.get("polish_enabled") == "on" else 0,
             1 if form_data.get("enabled") == "on" else 0,
             max_concurrent_jobs,
             per_user_pending_limit,
@@ -1830,7 +1908,12 @@ def create_builtin_job(form_values: dict) -> int:
     requested_n = max(1, min(int(form_values["n"]), 10))
     cost = int(config.get("price_per_image", 1)) * requested_n
     original_prompt = form_values["prompt"]
-    effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
+    effective_prompt = form_values.get("confirmed_effective_prompt", "").strip()
+    confirmed_source = form_values.get("confirmed_prompt_source", "").strip()
+    if effective_prompt and confirmed_source != original_prompt:
+        raise ValueError("润色确认已失效，请重新确认提示词。")
+    if not effective_prompt:
+        effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
 
     try:
         db.execute("BEGIN IMMEDIATE")
@@ -1875,7 +1958,12 @@ def create_custom_job(form_values: dict) -> str:
         raise ValueError("选择自定义模型时，请填写模型名称。")
 
     original_prompt = form_values["prompt"]
-    effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
+    effective_prompt = form_values.get("confirmed_effective_prompt", "").strip()
+    confirmed_source = form_values.get("confirmed_prompt_source", "").strip()
+    if effective_prompt and confirmed_source != original_prompt:
+        raise ValueError("润色确认已失效，请重新确认提示词。")
+    if not effective_prompt:
+        effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
     resolved_model = resolve_model_name(
         {
             "model": form_values["model_choice"],
@@ -1914,6 +2002,35 @@ def create_custom_job(form_values: dict) -> str:
     )
     db.commit()
     return access_token
+
+
+def build_builtin_polish_preview(form_values: dict) -> dict:
+    user_id = current_user_id()
+    if user_id is None:
+        raise ValueError("请先登录后再使用内置接口。")
+    config = get_provider_config(db=get_db())
+    if not config.get("enabled") or not config.get("has_api_key") or not config.get("base_url"):
+        raise ValueError("内置接口暂未启用，请联系管理员配置。")
+
+    original_prompt = form_values["prompt"].strip()
+    effective_prompt = polish_prompt_with_ai(original_prompt, form_values.get("polish_category", "auto"))
+    return {
+        "original_prompt": original_prompt,
+        "effective_prompt": effective_prompt,
+        "category": resolve_inspirer_category(original_prompt, form_values.get("polish_category", "auto")),
+        "mode_label": "AI 润色",
+    }
+
+
+def build_custom_polish_preview(form_values: dict) -> dict:
+    original_prompt = form_values["prompt"].strip()
+    category = resolve_inspirer_category(original_prompt, form_values.get("polish_category", "auto"))
+    return {
+        "original_prompt": original_prompt,
+        "effective_prompt": polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")),
+        "category": category,
+        "mode_label": "本地润色",
+    }
 
 
 def load_user_jobs(user_id: int, limit: int = 120) -> list[dict]:
@@ -2318,10 +2435,13 @@ def index():
         "polish_prompt": DEFAULTS["polish_prompt"],
         "polish_category": "auto",
         "generation_mode": "custom",
+        "confirmed_effective_prompt": "",
+        "confirmed_prompt_source": "",
     }
     images = []
     history_items = []
     error = None
+    polish_preview = None
     request_payload = None
     model_options = build_fallback_model_options()
     model_status = "当前显示的是内置默认模型列表。"
@@ -2337,6 +2457,12 @@ def index():
             if key == "polish_category":
                 value = request.form.get(key, "auto").strip() or "auto"
                 form_values[key] = value if value in INSPIRER_CATEGORY_BY_VALUE else "auto"
+                continue
+            if key == "confirmed_effective_prompt":
+                form_values[key] = request.form.get(key, "").strip()
+                continue
+            if key == "confirmed_prompt_source":
+                form_values[key] = request.form.get(key, "").strip()
                 continue
             if key == "model_choice":
                 form_values[key] = request.form.get("model", "").strip() or form_values[key]
@@ -2354,13 +2480,36 @@ def index():
                 raise ValueError("请输入提示词。")
 
             if form_values["generation_mode"] == "builtin":
-                job_id = create_builtin_job(form_values)
-                flash("内置接口任务已提交，请在任务列表查看生成进度。")
-                return redirect(url_for("my_jobs", job_id=job_id))
+                if form_values["polish_prompt"]:
+                    confirmed_source = form_values["confirmed_prompt_source"]
+                    if not form_values["confirmed_effective_prompt"] or confirmed_source != form_values["prompt"]:
+                        polish_preview = build_builtin_polish_preview(form_values)
+                        form_values["confirmed_effective_prompt"] = polish_preview["effective_prompt"]
+                        form_values["confirmed_prompt_source"] = form_values["prompt"]
+                    else:
+                        job_id = create_builtin_job(form_values)
+                        flash("内置接口任务已提交，请在任务列表查看生成进度。")
+                        return redirect(url_for("my_jobs", job_id=job_id))
+                else:
+                    job_id = create_builtin_job(form_values)
+                    flash("内置接口任务已提交，请在任务列表查看生成进度。")
+                    return redirect(url_for("my_jobs", job_id=job_id))
 
-            access_token = create_custom_job(form_values)
-            flash("任务已提交，生成完成后会自动显示结果。")
-            return redirect(url_for("custom_job_status", access_token=access_token))
+            else:
+                if form_values["polish_prompt"]:
+                    confirmed_source = form_values["confirmed_prompt_source"]
+                    if not form_values["confirmed_effective_prompt"] or confirmed_source != form_values["prompt"]:
+                        polish_preview = build_custom_polish_preview(form_values)
+                        form_values["confirmed_effective_prompt"] = polish_preview["effective_prompt"]
+                        form_values["confirmed_prompt_source"] = form_values["prompt"]
+                    else:
+                        access_token = create_custom_job(form_values)
+                        flash("任务已提交，生成完成后会自动显示结果。")
+                        return redirect(url_for("custom_job_status", access_token=access_token))
+                else:
+                    access_token = create_custom_job(form_values)
+                    flash("任务已提交，生成完成后会自动显示结果。")
+                    return redirect(url_for("custom_job_status", access_token=access_token))
         except Exception as exc:  # noqa: BLE001
             error = str(exc)
 
@@ -2373,6 +2522,7 @@ def index():
         images=images,
         history_items=history_items,
         error=error,
+        polish_preview=polish_preview,
         request_payload=request_payload,
         model_options=model_options,
         model_status=model_status,

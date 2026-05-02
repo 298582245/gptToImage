@@ -147,3 +147,15 @@
 - 操作：首页结果卡片、公共画廊、内置接口任务详情/列表、自定义任务详情、我的图片页面均在 prompt_polished 时显示 effective_prompt。
 - 修改：templates/index.html, templates/my_jobs.html, templates/custom_job.html, templates/my_images.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 22:46（UTC+8） Codex
+- 任务：新增管理员配置的 AI 提示词润色接口，并让内置接口生图先确认润色结果。
+- 操作：provider_configs 增加润色接口配置字段和迁移；后台内置接口页增加润色 Base URL/API Key/模型/启用项；内置接口开启润色时先调用 AI 润色并展示确认面板，确认后才扣积分提交任务；自定义接口继续使用本地规则润色；本地规则润色改成直接输出最终生图提示词。
+- 修改：app.py, templates/admin_provider.html, templates/index.html。
+- 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 22:55（UTC+8） Codex
+- 任务：自定义接口开启提示词润色时也必须先给用户确认。
+- 操作：create_custom_job 改为优先使用用户确认后的 confirmed_effective_prompt；新增本地润色预览 build_custom_polish_preview；首页提交逻辑在自定义接口开启润色时先展示确认面板，用户确认后才创建自定义生成任务；确认面板文案改为同时适配 AI 润色和本地润色。
+- 修改：app.py, templates/index.html。
+- 验证：仅做文本静态检查，未运行项目。

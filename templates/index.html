@@ -272,7 +272,7 @@
                         <div>
                           <p class="text-sm font-medium text-stone-900">提示词润色</p>
                           <p class="mt-1 text-xs leading-5 text-stone-500">
-                            基于本地 image-inspirer 灵感库优化提示词，保留主题意图并补充构图、光影、质感和避坑约束。
+                            自定义接口使用本地规则润色；站内内置接口使用管理员配置的 AI 润色，并需要确认后再生图。
                             <a class="text-stone-900 underline decoration-stone-300 underline-offset-4" href="{{ inspirer_source_url }}" target="_blank" rel="noopener noreferrer">润色来源</a>
                           </p>
                         </div>
@@ -307,7 +307,7 @@
                         </div>
 
                         <button type="submit" id="generate-button" class="inline-flex h-14 items-center justify-center rounded-full bg-stone-900 px-6 text-sm font-medium text-white transition hover:bg-black">
-                          <span class="mr-2">生成图片</span>
+                          <span class="mr-2">{% if polish_preview %}确认并生成{% else %}生成图片{% endif %}</span>
                           <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M5 12h14M13 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>
                           </svg>
@@ -315,6 +315,31 @@
                       </div>
                     </div>
                   </div>
+                  {% if polish_preview %}
+                  <section class="mt-4 rounded-[28px] border border-amber-200 bg-amber-50 p-5">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p class="text-sm font-semibold text-amber-900">请确认润色后的提示词</p>
+                        <p class="mt-1 text-xs leading-5 text-amber-700">当前还没有提交生图任务；内置接口也还没有扣积分。确认无误后点击“确认并生成”。</p>
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        <span class="rounded-full bg-white/80 px-3 py-1.5 text-xs text-amber-800">{{ polish_preview.mode_label }}</span>
+                        <span class="rounded-full bg-white/80 px-3 py-1.5 text-xs text-amber-800">{{ polish_preview.category.label }}</span>
+                      </div>
+                    </div>
+                    <div class="mt-4 grid gap-3 md:grid-cols-2">
+                      <div class="rounded-2xl bg-white/80 p-4">
+                        <p class="text-xs font-medium uppercase tracking-wide text-stone-400">原始提示词</p>
+                        <p class="mt-2 text-sm leading-6 text-stone-700">{{ polish_preview.original_prompt }}</p>
+                      </div>
+                      <label class="block rounded-2xl bg-white/80 p-4">
+                        <span class="text-xs font-medium uppercase tracking-wide text-stone-400">润色后提示词（可手动微调）</span>
+                        <textarea name="confirmed_effective_prompt" rows="8" class="mt-2 w-full resize-y rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm leading-6 text-stone-800 outline-none focus:border-amber-300">{{ polish_preview.effective_prompt }}</textarea>
+                        <input type="hidden" name="confirmed_prompt_source" value="{{ polish_preview.original_prompt }}">
+                      </label>
+                    </div>
+                  </section>
+                  {% endif %}
                 </div>
               </div>
             </form>
