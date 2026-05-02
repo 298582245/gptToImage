@@ -106,15 +106,8 @@
         }
       }
       if (activeStatuses.includes(currentStatus)) {
-        window.setInterval(async () => {
-          try {
-            const response = await fetch("{{ url_for('api_custom_job', access_token=job.access_token) }}");
-            const data = await response.json();
-            if (!data.ok || !data.job) return;
-            if (!activeStatuses.includes(data.job.status)) window.location.reload();
-          } catch (error) {
-            return;
-          }
+        window.setTimeout(() => {
+          window.location.replace(`${window.location.pathname}?refresh=${Date.now()}`);
         }, 5000);
       }
     </script>

@@ -544,11 +544,8 @@ def api_custom_job(access_token: str):
     return jsonify({"ok": True, "job": job, "image_count": len(images)})
 
 
-@app.route(route_path("/admin"))
-@admin_required
-def admin_dashboard():
-    db = get_db()
-    stats = {
+def admin_stats(db: sqlite3.Connection) -> dict:
+    return {
         "users": db.execute("SELECT COUNT(*) FROM users").fetchone()[0],
         "images": db.execute("SELECT COUNT(*) FROM images").fetchone()[0],
         "public_images": db.execute("SELECT COUNT(*) FROM images WHERE visibility = 'public'").fetchone()[0],
@@ -568,34 +565,115 @@ def admin_dashboard():
             """
         ).fetchone()[0],
     }
-    recent_users = db.execute(
-        "SELECT id, username, credits, is_admin, created_at FROM users ORDER BY id DESC LIMIT 20"
+
+
+def load_recent_users(limit: int = 20) -> list[dict]:
+    rows = get_db().execute(
+        "SELECT id, username, credits, is_admin, created_at FROM users ORDER BY id DESC LIMIT ?",
+        (limit,),
     ).fetchall()
-    recent_images = db.execute(
+    return [dict(row) for row in rows]
+
+
+def load_recent_images(limit: int = 20) -> list[dict]:
+    rows = get_db().execute(
         """
         SELECT images.*, users.username
         FROM images
         LEFT JOIN users ON users.id = images.user_id
         ORDER BY images.created_at DESC, images.id DESC
-        LIMIT 20
-        """
+        LIMIT ?
+        """,
+        (limit,),
     ).fetchall()
-    recent_jobs = db.execute(
+    return [image_row_to_dict(row) for row in rows]
+
+
+def load_admin_jobs(limit: int = 80) -> list[dict]:
+    db = get_db()
+    builtin_rows = db.execute(
         """
-        SELECT jobs.*, users.username
+        SELECT jobs.*, users.username, COUNT(images.id) AS image_count
         FROM generation_jobs AS jobs
         JOIN users ON users.id = jobs.user_id
+        LEFT JOIN images ON images.job_id = jobs.id
+        GROUP BY jobs.id
         ORDER BY jobs.created_at DESC, jobs.id DESC
-        LIMIT 20
+        LIMIT ?
         """
+        ,
+        (limit,),
     ).fetchall()
+    custom_rows = db.execute(
+        """
+        SELECT jobs.id, jobs.access_token, jobs.user_id, jobs.status, jobs.prompt,
+               jobs.effective_prompt, jobs.prompt_polished, jobs.model, jobs.size,
+               jobs.quality, jobs.background, jobs.output_format, jobs.style, jobs.n,
+               jobs.error_message, jobs.attempts, jobs.created_at, jobs.started_at,
+               jobs.completed_at, users.username, COUNT(images.id) AS image_count
+        FROM custom_generation_jobs AS jobs
+        LEFT JOIN users ON users.id = jobs.user_id
+        LEFT JOIN images ON images.access_token = jobs.access_token
+        GROUP BY jobs.id
+        ORDER BY jobs.created_at DESC, jobs.id DESC
+        LIMIT ?
+        """
+        ,
+        (limit,),
+    ).fetchall()
+
+    jobs = []
+    for row in builtin_rows:
+        job = job_row_to_dict(row)
+        job.update({"username": row["username"], "mode": "builtin", "mode_label": "内置接口"})
+        jobs.append(job)
+    for row in custom_rows:
+        job = custom_job_row_to_dict(row)
+        job.update({"username": row["username"] or "游客", "mode": "custom", "mode_label": "自定义接口"})
+        jobs.append(job)
+    return sorted(jobs, key=lambda item: (item["created_at"], item["id"]), reverse=True)[:limit]
+
+
+@app.route(route_path("/admin"))
+@admin_required
+def admin_dashboard():
+    db = get_db()
     return render_template(
-        "admin.html",
-        stats=stats,
+        "admin_dashboard.html",
+        active_admin_page="dashboard",
+        stats=admin_stats(db),
+        recent_images=load_recent_images(limit=12),
+        recent_jobs=load_admin_jobs(limit=12),
+    )
+
+
+@app.route(route_path("/admin/provider"))
+@admin_required
+def admin_provider():
+    return render_template(
+        "admin_provider.html",
+        active_admin_page="provider",
         provider_config=get_provider_config(),
-        recent_users=[dict(row) for row in recent_users],
-        recent_images=[image_row_to_dict(row) for row in recent_images],
-        recent_jobs=[job_row_to_dict(row) | {"username": row["username"]} for row in recent_jobs],
+    )
+
+
+@app.route(route_path("/admin/users"))
+@admin_required
+def admin_users():
+    return render_template(
+        "admin_users.html",
+        active_admin_page="users",
+        recent_users=load_recent_users(limit=80),
+    )
+
+
+@app.route(route_path("/admin/jobs"))
+@admin_required
+def admin_jobs():
+    return render_template(
+        "admin_jobs.html",
+        active_admin_page="jobs",
+        recent_jobs=load_admin_jobs(limit=120),
     )
 
 
@@ -609,7 +687,7 @@ def admin_provider_update():
         flash("内置接口配置已保存。")
     except Exception as exc:  # noqa: BLE001
         flash(f"保存失败：{exc}")
-    return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("admin_provider"))
 
 
 @app.post(route_path("/admin/credits"))
@@ -627,7 +705,7 @@ def admin_credits_update():
         flash("积分已调整。")
     except Exception as exc:  # noqa: BLE001
         flash(f"积分调整失败：{exc}")
-    return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("admin_users"))
 
 
 @app.post(route_path("/admin/jobs/<int:job_id>/cancel"))
@@ -642,7 +720,7 @@ def admin_cancel_job(job_id: int):
         if not job or job["status"] != "pending":
             db.rollback()
             flash("只能取消待生成任务；生成中的任务会在失败时自动退款。")
-            return redirect(url_for("admin_dashboard"))
+            return redirect(url_for("admin_jobs"))
 
         add_credit_ledger(db, job["user_id"], int(job["cost"]), "管理员取消任务退款", job_id)
         db.execute(
@@ -654,7 +732,7 @@ def admin_cancel_job(job_id: int):
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         flash(f"取消失败：{exc}")
-    return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("admin_jobs"))
 
 
 def normalize_base_url(base_url: str) -> str:

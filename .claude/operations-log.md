@@ -67,3 +67,8 @@
 - 任务：修复旧 SQLite 库启动时报 no such column: access_token。
 - 操作：移除 executescript 内对新列 access_token 的索引创建，改为 ensure_column 之后单独创建 idx_images_access_token。
 - 验证：按用户要求未执行本机环境检查。
+
+## 2026-05-02 18:59（UTC+8） Codex
+- 任务：修复自定义任务页不自动刷新，拆分管理员后台并增加侧栏。
+- 操作：custom_job.html 改为活跃任务 5 秒强制刷新并附带时间戳；新增 admin_layout/admin_dashboard/admin_provider/admin_users/admin_jobs 模板；新增 /admin/provider、/admin/users、/admin/jobs 路由；后台任务列表合并内置与自定义任务，隐藏 API 和 Key。
+- 验证：按用户要求仅做关键代码静态查看，未执行依赖安装、项目启动或本机环境检查。

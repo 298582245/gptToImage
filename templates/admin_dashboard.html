@@ -1,0 +1,57 @@
+{% extends "admin_layout.html" %}
+
+{% block title %}概览{% endblock %}
+{% block heading %}概览{% endblock %}
+
+{% block content %}
+<section class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+  {% for key, value in stats.items() %}
+  <div class="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
+    <p class="text-sm text-stone-500">{{ key }}</p>
+    <p class="mt-2 text-3xl font-semibold">{{ value }}</p>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="mt-8 grid gap-6 lg:grid-cols-2">
+  <div class="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-lg font-semibold">最近任务</h3>
+      <a class="text-sm text-stone-500 hover:text-stone-900" href="{{ url_for('admin_jobs') }}">查看全部</a>
+    </div>
+    <div class="mt-4 space-y-3">
+      {% for job in recent_jobs %}
+      <div class="rounded-2xl bg-stone-50 p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-600">{{ job.mode_label }}</span>
+          <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-600">{{ job.status_label }}</span>
+          <span class="text-xs text-stone-400">#{{ job.id }} · {{ job.username }}</span>
+        </div>
+        <p class="mt-2 truncate text-sm font-medium">{{ job.model }}</p>
+        <p class="mt-1 truncate text-xs text-stone-500">{{ job.prompt }}</p>
+      </div>
+      {% else %}
+      <p class="text-sm text-stone-500">暂无任务。</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+    <h3 class="text-lg font-semibold">最近图片</h3>
+    <div class="mt-4 space-y-3">
+      {% for image in recent_images %}
+      <div class="flex items-center gap-3 rounded-2xl bg-stone-50 p-3">
+        <img src="{{ image.url }}" alt="图片" class="h-14 w-14 rounded-xl object-cover">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium">{{ image.model }}</p>
+          <p class="truncate text-xs text-stone-500">{{ image.prompt }}</p>
+        </div>
+        <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-500">{{ image.visibility }}</span>
+      </div>
+      {% else %}
+      <p class="text-sm text-stone-500">暂无图片。</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

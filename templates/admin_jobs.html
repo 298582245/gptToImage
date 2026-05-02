@@ -1,0 +1,55 @@
+{% extends "admin_layout.html" %}
+
+{% block title %}生成任务{% endblock %}
+{% block heading %}生成任务{% endblock %}
+
+{% block content %}
+<section class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h3 class="text-lg font-semibold">任务记录</h3>
+      <p class="mt-1 text-sm text-stone-500">展示内置接口和自定义接口任务，只保留必要生成信息，不展示 API 或 Key。</p>
+    </div>
+    <span class="text-xs text-stone-400">共展示 {{ recent_jobs|length }} 条</span>
+  </div>
+
+  <div class="mt-5 space-y-3">
+    {% for job in recent_jobs %}
+    <div class="rounded-2xl border border-stone-100 bg-stone-50 p-4">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-600">{{ job.mode_label }}</span>
+            <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-600">{{ job.status_label }}</span>
+            <span class="text-xs text-stone-400">#{{ job.id }} · {{ job.username }} · {{ job.created_at }}</span>
+          </div>
+          <p class="mt-2 truncate text-sm font-medium">{{ job.model }}</p>
+          <p class="mt-1 line-clamp-2 text-sm leading-6 text-stone-500">{{ job.prompt }}</p>
+          {% if job.error_message %}
+          <p class="mt-2 rounded-2xl bg-white px-3 py-2 text-xs text-rose-600">{{ job.error_message }}</p>
+          {% endif %}
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2 text-xs text-stone-500">
+          <span class="rounded-full bg-white px-2.5 py-1">{{ job.n }} 张</span>
+          <span class="rounded-full bg-white px-2.5 py-1">{{ job.image_count }} 结果</span>
+          {% if job.mode == "builtin" %}
+          <span class="rounded-full bg-white px-2.5 py-1">{{ job.cost }} 积分</span>
+          {% endif %}
+          {% if job.mode == "custom" %}
+          <a class="rounded-full bg-white px-2.5 py-1 text-stone-700 hover:text-stone-950" href="{{ url_for('custom_job_status', access_token=job.access_token) }}" target="_blank" rel="noopener noreferrer">任务页</a>
+          {% endif %}
+          {% if job.mode == "builtin" and job.status == "pending" %}
+          <form method="post" action="{{ url_for('admin_cancel_job', job_id=job.id) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button class="rounded-full bg-white px-2.5 py-1 text-stone-700 hover:text-stone-950" type="submit">取消退款</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">暂无任务。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

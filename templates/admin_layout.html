@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}管理员后台{% endblock %} - AI Image Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-stone-900">
+    <div class="min-h-screen lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
+      <aside class="border-b border-stone-200 bg-white lg:min-h-screen lg:border-b-0 lg:border-r">
+        <div class="flex h-full flex-col px-5 py-6">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wide text-stone-400">Admin</p>
+            <h1 class="mt-1 text-2xl font-semibold tracking-tight">管理后台</h1>
+            <p class="mt-2 text-sm text-stone-500">{{ current_user.username }}</p>
+          </div>
+          {% set nav_items = [
+            ('dashboard', '概览', 'admin_dashboard'),
+            ('provider', '内置接口', 'admin_provider'),
+            ('users', '用户积分', 'admin_users'),
+            ('jobs', '生成任务', 'admin_jobs')
+          ] %}
+          <nav class="mt-8 grid gap-2 text-sm">
+            {% for key, label, endpoint in nav_items %}
+            <a href="{{ url_for(endpoint) }}" class="rounded-2xl px-4 py-3 font-medium transition {% if active_admin_page == key %}bg-stone-900 text-white{% else %}text-stone-600 hover:bg-stone-100 hover:text-stone-950{% endif %}">{{ label }}</a>
+            {% endfor %}
+          </nav>
+          <div class="mt-auto grid gap-2 pt-8 text-sm">
+            <a class="rounded-2xl border border-stone-200 px-4 py-3 text-stone-600 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+            <a class="rounded-2xl border border-stone-200 px-4 py-3 text-stone-600 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
+            <a class="rounded-2xl border border-stone-200 px-4 py-3 text-stone-600 hover:text-stone-950" href="{{ url_for('my_images') }}">我的图片</a>
+          </div>
+        </div>
+      </aside>
+
+      <main class="px-4 py-8 sm:px-6 lg:px-8">
+        <div class="mx-auto max-w-7xl">
+          <header class="border-b border-stone-200 pb-6">
+            <p class="text-sm text-stone-500">AI Image Studio</p>
+            <h2 class="mt-1 text-3xl font-semibold tracking-tight">{% block heading %}管理员后台{% endblock %}</h2>
+          </header>
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+    {% include "_modal_messages.html" %}
+  </body>
+</html>
