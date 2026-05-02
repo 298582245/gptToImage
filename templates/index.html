@@ -272,7 +272,7 @@
                         <div>
                           <p class="text-sm font-medium text-stone-900">提示词润色</p>
                           <p class="mt-1 text-xs leading-5 text-stone-500">
-                            自定义接口使用本地规则润色；站内内置接口使用管理员配置的 AI 润色，并需要确认后再生图。
+                            开启后会先展示润色结果，确认后才开始生成，避免提示词不符合预期。
                             <a class="text-stone-900 underline decoration-stone-300 underline-offset-4" href="{{ inspirer_source_url }}" target="_blank" rel="noopener noreferrer">润色来源</a>
                           </p>
                         </div>
@@ -323,7 +323,6 @@
                         <p class="mt-1 text-xs leading-5 text-amber-700">当前还没有提交生图任务；内置接口也还没有扣积分。确认无误后点击“确认并生成”。</p>
                       </div>
                       <div class="flex flex-wrap gap-2">
-                        <span class="rounded-full bg-white/80 px-3 py-1.5 text-xs text-amber-800">{{ polish_preview.mode_label }}</span>
                         <span class="rounded-full bg-white/80 px-3 py-1.5 text-xs text-amber-800">{{ polish_preview.category.label }}</span>
                       </div>
                     </div>
@@ -337,6 +336,9 @@
                         <textarea name="confirmed_effective_prompt" rows="8" class="mt-2 w-full resize-y rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm leading-6 text-stone-800 outline-none focus:border-amber-300">{{ polish_preview.effective_prompt }}</textarea>
                         <input type="hidden" name="confirmed_prompt_source" value="{{ polish_preview.original_prompt }}">
                       </label>
+                    </div>
+                    <div class="mt-4 flex flex-wrap justify-end gap-3">
+                      <button type="submit" name="polish_action" value="repolish" class="rounded-full border border-amber-200 bg-white/80 px-5 py-2.5 text-sm font-medium text-amber-900 hover:bg-white">重新润色</button>
                     </div>
                   </section>
                   {% endif %}

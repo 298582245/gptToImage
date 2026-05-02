@@ -159,3 +159,9 @@
 - 操作：create_custom_job 改为优先使用用户确认后的 confirmed_effective_prompt；新增本地润色预览 build_custom_polish_preview；首页提交逻辑在自定义接口开启润色时先展示确认面板，用户确认后才创建自定义生成任务；确认面板文案改为同时适配 AI 润色和本地润色。
 - 修改：app.py, templates/index.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 23:02（UTC+8） Codex
+- 任务：隐藏润色实现差异文案，并增加重新润色入口。
+- 操作：首页润色说明改为通用确认提示，不再说明自定义/内置分别使用什么润色方式；确认面板不显示 AI/本地标签；新增 polish_action=repolish 分支，点击“重新润色”可在当前表单直接重新生成润色结果，不提交生图任务。
+- 修改：app.py, templates/index.html。
+- 验证：仅做文本静态检查，未运行项目。

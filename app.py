@@ -2018,7 +2018,6 @@ def build_builtin_polish_preview(form_values: dict) -> dict:
         "original_prompt": original_prompt,
         "effective_prompt": effective_prompt,
         "category": resolve_inspirer_category(original_prompt, form_values.get("polish_category", "auto")),
-        "mode_label": "AI 润色",
     }
 
 
@@ -2029,7 +2028,6 @@ def build_custom_polish_preview(form_values: dict) -> dict:
         "original_prompt": original_prompt,
         "effective_prompt": polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")),
         "category": category,
-        "mode_label": "本地润色",
     }
 
 
@@ -2449,6 +2447,7 @@ def index():
     if request.method == "POST":
         if not validate_csrf_token():
             abort(400)
+        polish_action = request.form.get("polish_action", "confirm")
 
         for key in form_values:
             if key == "polish_prompt":
@@ -2482,7 +2481,7 @@ def index():
             if form_values["generation_mode"] == "builtin":
                 if form_values["polish_prompt"]:
                     confirmed_source = form_values["confirmed_prompt_source"]
-                    if not form_values["confirmed_effective_prompt"] or confirmed_source != form_values["prompt"]:
+                    if polish_action == "repolish" or not form_values["confirmed_effective_prompt"] or confirmed_source != form_values["prompt"]:
                         polish_preview = build_builtin_polish_preview(form_values)
                         form_values["confirmed_effective_prompt"] = polish_preview["effective_prompt"]
                         form_values["confirmed_prompt_source"] = form_values["prompt"]
@@ -2498,7 +2497,7 @@ def index():
             else:
                 if form_values["polish_prompt"]:
                     confirmed_source = form_values["confirmed_prompt_source"]
-                    if not form_values["confirmed_effective_prompt"] or confirmed_source != form_values["prompt"]:
+                    if polish_action == "repolish" or not form_values["confirmed_effective_prompt"] or confirmed_source != form_values["prompt"]:
                         polish_preview = build_custom_polish_preview(form_values)
                         form_values["confirmed_effective_prompt"] = polish_preview["effective_prompt"]
                         form_values["confirmed_prompt_source"] = form_values["prompt"]
