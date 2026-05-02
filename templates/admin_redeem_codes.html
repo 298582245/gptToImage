@@ -10,20 +10,20 @@
       <h3 class="text-lg font-semibold">卡密充值管理</h3>
       <p class="mt-1 text-sm text-stone-500">批量生成卡密、维护充值公告，并查看卡密列表和使用记录。</p>
     </div>
-    <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="button" data-redeem-create-open>批量生成卡密</button>
+    <div class="flex flex-wrap gap-2">
+      <button class="rounded-full bg-white px-5 py-3 text-sm font-medium text-stone-700 ring-1 ring-stone-200" type="button" data-redeem-notice-open>编辑公告</button>
+      <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="button" data-redeem-create-open>批量生成卡密</button>
+    </div>
   </div>
 
-  <form method="post" action="{{ url_for('admin_recharge_notice_update') }}" class="mt-5 rounded-2xl bg-stone-50 p-4">
-    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
-      <div class="lg:w-48">
-        <p class="text-sm font-medium text-stone-900">充值公告</p>
-        <p class="mt-1 text-xs leading-5 text-stone-500">展示在用户充值页，用来写购买地址或客服说明。</p>
-      </div>
-      <textarea name="notice" rows="4" class="min-h-28 flex-1 rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm leading-7 outline-none focus:border-stone-400" placeholder="例如：卡密购买地址、客服联系方式、使用说明等。">{{ settings.notice }}</textarea>
-      <button class="rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white" type="submit">保存公告</button>
-    </div>
-  </form>
+  <div class="mt-5 rounded-2xl bg-stone-50 p-4">
+    <p class="text-sm font-medium text-stone-900">充值公告</p>
+    {% if settings.notice %}
+    <p class="mt-2 whitespace-pre-line text-sm leading-7 text-stone-600">{{ settings.notice }}</p>
+    {% else %}
+    <p class="mt-2 text-sm text-stone-500">暂未设置充值公告。</p>
+    {% endif %}
+  </div>
 </section>
 
 {% if last_created_codes %}
@@ -53,18 +53,7 @@
   </div>
 
   <div data-redeem-tab-panel="codes">
-    <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <p class="text-sm text-stone-500">共 {{ pagination.total }} 张，删除为软删除，已使用记录保留。</p>
-      <form method="get" action="{{ url_for('admin_redeem_codes') }}" class="flex items-center gap-2 text-sm">
-        <input type="hidden" name="page" value="1">
-        <span class="text-stone-500">每页</span>
-        <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none" onchange="this.form.submit()">
-          {% for size in [10, 20, 50, 100] %}
-          <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条</option>
-          {% endfor %}
-        </select>
-      </form>
-    </div>
+    <p class="mt-5 text-sm text-stone-500">共 {{ pagination.total }} 张，当前每页 {{ pagination.per_page }} 条；删除为软删除，已使用记录保留。</p>
 
     <form method="post" action="{{ url_for('admin_redeem_codes_delete', page=pagination.page, per_page=pagination.per_page) }}" class="mt-4" onsubmit="return confirm('确定删除选中的卡密吗？')">
       <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -113,7 +102,7 @@
     <form method="get" action="{{ url_for('admin_redeem_codes') }}" class="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
       <span class="text-stone-500">跳转到</span>
       <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
-      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400" onchange="this.form.page.value = 1; this.form.submit()">
         {% for size in [10, 20, 50, 100] %}
         <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
         {% endfor %}
@@ -184,22 +173,60 @@
   </div>
 </div>
 
+<div class="fixed inset-0 z-50 hidden items-center justify-center bg-stone-950/50 px-4 py-6" data-redeem-notice-modal>
+  <div class="w-full max-w-2xl rounded-[28px] bg-white p-6 shadow-2xl">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-xs font-medium uppercase tracking-wide text-stone-400">Recharge Notice</p>
+        <h3 class="mt-1 text-xl font-semibold">编辑充值公告</h3>
+        <p class="mt-1 text-sm text-stone-500">展示在用户充值页，用来写购买地址、客服联系方式或使用说明。</p>
+      </div>
+      <button class="rounded-full bg-stone-100 px-3 py-1.5 text-sm text-stone-500 hover:text-stone-950" type="button" data-redeem-notice-close>关闭</button>
+    </div>
+
+    <form method="post" action="{{ url_for('admin_recharge_notice_update') }}" class="mt-6 space-y-4">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <textarea name="notice" rows="8" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-7 outline-none focus:border-stone-400" placeholder="例如：卡密购买地址、客服联系方式、使用说明等。">{{ settings.notice }}</textarea>
+      <div class="flex justify-end gap-2 pt-2">
+        <button class="rounded-full bg-stone-100 px-4 py-2 text-sm text-stone-600" type="button" data-redeem-notice-close>取消</button>
+        <button class="rounded-full bg-stone-900 px-5 py-2 text-sm font-medium text-white" type="submit">保存公告</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
   const createModal = document.querySelector('[data-redeem-create-modal]');
+  const noticeModal = document.querySelector('[data-redeem-notice-modal]');
   const closeCreateModal = () => {
     createModal?.classList.add('hidden');
     createModal?.classList.remove('flex');
+  };
+  const closeNoticeModal = () => {
+    noticeModal?.classList.add('hidden');
+    noticeModal?.classList.remove('flex');
   };
   document.querySelector('[data-redeem-create-open]')?.addEventListener('click', () => {
     createModal?.classList.remove('hidden');
     createModal?.classList.add('flex');
     createModal?.querySelector('input[name="credits"]')?.focus();
   });
+  document.querySelector('[data-redeem-notice-open]')?.addEventListener('click', () => {
+    noticeModal?.classList.remove('hidden');
+    noticeModal?.classList.add('flex');
+    noticeModal?.querySelector('textarea[name="notice"]')?.focus();
+  });
   document.querySelectorAll('[data-redeem-create-close]').forEach((button) => {
     button.addEventListener('click', closeCreateModal);
   });
+  document.querySelectorAll('[data-redeem-notice-close]').forEach((button) => {
+    button.addEventListener('click', closeNoticeModal);
+  });
   createModal?.addEventListener('click', (event) => {
     if (event.target === createModal) closeCreateModal();
+  });
+  noticeModal?.addEventListener('click', (event) => {
+    if (event.target === noticeModal) closeNoticeModal();
   });
 
   document.querySelectorAll('[data-redeem-tab-button]').forEach((button) => {

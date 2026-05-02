@@ -105,3 +105,15 @@
 - 操作：用户页开放 10/20/50/100 条分页并保持 per_page；任务页切换每页条数回到第 1 页并保持 per_page；卡密页生成表单改为弹窗，卡密列表和最近使用记录改为 Tab 切换。
 - 修改：app.py, templates/admin_users.html, templates/admin_jobs.html, templates/admin_redeem_codes.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 20:55（UTC+8） Codex
+- 任务：移除三个后台页面顶部每页条数下拉框，避免与底部分页器状态不同步。
+- 操作：/admin/users、/admin/jobs、/admin/redeem-codes 顶部仅保留统计文字；底部 per_page 下拉框切换时自动回到第 1 页并提交。
+- 修改：templates/admin_users.html, templates/admin_jobs.html, templates/admin_redeem_codes.html。
+- 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 21:08（UTC+8） Codex
+- 任务：精简首页布局，将卡密充值公告编辑改为弹窗。
+- 操作：删除首页左侧新建创作、连接配置、本次参数、共享画廊等侧栏内容和主容器双列布局；删除顶部 OpenAI Compatible/Public Gallery 标签；管理端充值公告改成点击“编辑公告”后在弹窗内修改。
+- 修改：templates/index.html, templates/admin_redeem_codes.html。
+- 验证：仅做文本静态检查，未运行项目。
