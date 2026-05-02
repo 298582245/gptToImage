@@ -27,7 +27,7 @@
         <div class="flex flex-wrap gap-2 text-xs text-stone-500">
           <span class="rounded-full bg-white px-2.5 py-1">{{ image.source }}</span>
           <span class="rounded-full px-2.5 py-1 {% if image.visibility == 'hidden' %}bg-red-100 text-red-700{% else %}bg-white{% endif %}">{{ image.visibility_label }}</span>
-          <span class="rounded-full bg-white px-2.5 py-1">{{ image.username or '游客' }}{% if image.user_is_disabled %} · 已禁用{% endif %}</span>
+          <span class="rounded-full bg-white px-2.5 py-1">{{ image.username or '游客' }}{% if image.user_is_admin %} · 管理员{% endif %}{% if image.user_is_disabled %} · 已禁用{% endif %}</span>
           <span class="rounded-full bg-white px-2.5 py-1">{{ image.model }}</span>
         </div>
         <p class="line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
@@ -40,7 +40,7 @@
           {% else %}
           <form method="post" action="{{ url_for('admin_image_hide', image_id=image.id) }}" class="space-y-2" onsubmit="return confirm('确认隐藏这张图片吗？隐藏后仅管理员可查看。');">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            {% if image.user_id and not image.user_is_disabled %}
+            {% if image.user_id and not image.user_is_admin and not image.user_is_disabled %}
             <label class="flex items-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs text-stone-600">
               <input type="checkbox" name="ban_user" class="rounded border-stone-300 text-red-600 focus:ring-red-500">
               同时封禁用户 {{ image.username }}

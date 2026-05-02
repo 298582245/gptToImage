@@ -997,7 +997,7 @@ def redeem_code_for_user(raw_code: str, user_id: int) -> dict:
 def load_recent_images(limit: int = 20) -> list[dict]:
     rows = get_db().execute(
         """
-        SELECT images.*, users.username, users.is_disabled AS user_is_disabled
+        SELECT images.*, users.username, users.is_admin AS user_is_admin, users.is_disabled AS user_is_disabled
         FROM images
         LEFT JOIN users ON users.id = images.user_id
         ORDER BY images.created_at DESC, images.id DESC
@@ -1183,7 +1183,7 @@ def admin_image_hide(image_id: int):
         db = get_db()
         image = db.execute(
             """
-            SELECT images.id, images.user_id, images.visibility, users.is_disabled
+            SELECT images.id, images.user_id, images.visibility, users.is_admin, users.is_disabled
             FROM images
             LEFT JOIN users ON users.id = images.user_id
             WHERE images.id = ?
@@ -1197,12 +1197,12 @@ def admin_image_hide(image_id: int):
         ban_user = request.form.get("ban_user") == "on"
         ban_skipped = False
         if ban_user and image["user_id"]:
-            if current and int(current["id"]) == int(image["user_id"]):
+            if image["is_admin"] or (current and int(current["id"]) == int(image["user_id"])):
                 ban_skipped = True
             else:
                 db.execute("UPDATE users SET is_disabled = 1 WHERE id = ?", (image["user_id"],))
         db.commit()
-        flash("图片已隐藏，仅管理员可查看。" + (" 已跳过封禁当前管理员。" if ban_skipped else ""))
+        flash("图片已隐藏，仅管理员可查看。" + (" 已跳过封禁管理员账号。" if ban_skipped else ""))
     except Exception as exc:  # noqa: BLE001
         get_db().rollback()
         flash(f"隐藏图片失败：{exc}")
@@ -1673,6 +1673,7 @@ def image_row_to_dict(row: sqlite3.Row) -> dict:
         "source": row["source"],
         "user_id": row["user_id"],
         "username": row["username"] if "username" in row.keys() else None,
+        "user_is_admin": bool(row["user_is_admin"]) if "user_is_admin" in row.keys() and row["user_is_admin"] is not None else False,
         "user_is_disabled": bool(row["user_is_disabled"]) if "user_is_disabled" in row.keys() and row["user_is_disabled"] is not None else False,
     }
 

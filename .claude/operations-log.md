@@ -129,3 +129,15 @@
 - 操作：新增管理员隐藏/恢复图片 POST 路由；隐藏图片使用 images.visibility='hidden'，仅管理员可访问；用户侧图片、任务图片列表过滤 hidden；审核页增加状态、隐藏、恢复、同时封禁用户操作。
 - 修改：app.py, templates/admin_images.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 22:12（UTC+8） Codex
+- 任务：图片审核封禁账号时禁止封禁管理员账号。
+- 操作：管理员图片列表查询补充用户 is_admin；后端隐藏图片时即使提交 ban_user 也跳过管理员账号；前端不再为管理员图片显示“同时封禁用户”选项。
+- 修改：app.py, templates/admin_images.html。
+- 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 22:18（UTC+8） Codex
+- 任务：静态审计图片审核隐藏/封禁接口的管理员权限链路。
+- 操作：检查 admin_required、validate_csrf_token、admin_image_hide、admin_image_restore 与隐藏图片访问控制；确认隐藏/恢复接口均为 POST、带管理员装饰器和 CSRF 校验，ban_user 仅在通过管理员校验后处理。
+- 修改：无业务代码修改，仅追加审计日志。
+- 验证：仅做文本静态检查，未运行项目。
