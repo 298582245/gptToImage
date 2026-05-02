@@ -21,10 +21,6 @@
           </p>
         </div>
 
-        {% if error %}
-        <div class="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ error }}</div>
-        {% endif %}
-
         <form method="post" class="mt-6 space-y-4">
           <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
           <label class="block">
@@ -53,5 +49,7 @@
         </div>
       </section>
     </main>
+
+    {% include "_modal_messages.html" %}
   </body>
 </html>

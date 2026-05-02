@@ -20,16 +20,6 @@
         </div>
       </header>
 
-      {% with messages = get_flashed_messages() %}
-      {% if messages %}
-      <div class="mt-5 space-y-2">
-        {% for message in messages %}
-        <div class="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-700">{{ message }}</div>
-        {% endfor %}
-      </div>
-      {% endif %}
-      {% endwith %}
-
       <section class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         {% for key, value in stats.items() %}
         <div class="rounded-[24px] border border-stone-200 bg-white p-5 shadow-sm">
@@ -154,5 +144,7 @@
         </div>
       </section>
     </main>
+
+    {% include "_modal_messages.html" %}
   </body>
 </html>

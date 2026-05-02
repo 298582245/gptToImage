@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>生成任务 - AI Image Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-stone-900">
+    <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <header class="flex flex-col gap-4 border-b border-stone-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-sm text-stone-500">任务 #{{ job.id }} · {{ job.status_label }}</p>
+          <h1 class="mt-1 text-3xl font-semibold tracking-tight">生成任务</h1>
+        </div>
+        <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-sm text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+      </header>
+
+      <section class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-sm text-stone-500">{{ job.created_at }}</p>
+            <h2 class="mt-1 text-xl font-semibold">{{ job.model }}</h2>
+            <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-600">{{ job.prompt }}</p>
+          </div>
+          <span class="rounded-full bg-stone-100 px-3 py-1.5 text-sm text-stone-600">{{ job.n }} 张</span>
+        </div>
+
+        {% if job.status in ["pending", "running"] %}
+        <div class="mt-5 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-600">
+          当前状态：{{ job.status_label }}。页面会每 5 秒自动刷新，生成完成后直接显示图片。
+        </div>
+        {% endif %}
+
+        {% if images %}
+        <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {% for image in images %}
+          <a href="{{ image.url }}" target="_blank" rel="noopener noreferrer" class="overflow-hidden rounded-3xl border border-stone-200 bg-stone-50">
+            <img src="{{ image.url }}" alt="生成结果" class="aspect-[4/5] w-full object-cover">
+          </a>
+          {% endfor %}
+        </div>
+        {% elif job.status == "completed" %}
+        <div class="mt-5 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-5 text-sm text-stone-600">任务已完成，但暂时没有找到图片记录。</div>
+        {% endif %}
+      </section>
+    </main>
+
+    {% set error = job.error_message if job and job.error_message else none %}
+    {% include "_modal_messages.html" %}
+
+    <script>
+      const savedApiCredentialKey = "gpt-image-workbench.saved-api-credentials";
+      const pendingApiCredentialKey = "gpt-image-workbench.pending-api-credentials";
+      const sessionStore = (() => {
+        try {
+          return window.sessionStorage;
+        } catch (error) {
+          return null;
+        }
+      })();
+      const localStore = (() => {
+        try {
+          return window.localStorage;
+        } catch (error) {
+          return null;
+        }
+      })();
+      const readStoredJson = (storage, key) => {
+        if (!storage) return null;
+        try {
+          const value = storage.getItem(key);
+          return value ? JSON.parse(value) : null;
+        } catch (error) {
+          return null;
+        }
+      };
+      const writeStoredJson = (storage, key, value) => {
+        if (!storage) return;
+        try {
+          storage.setItem(key, JSON.stringify(value));
+        } catch (error) {
+          return;
+        }
+      };
+      const removeStoredItem = (storage, key) => {
+        if (!storage) return;
+        try {
+          storage.removeItem(key);
+        } catch (error) {
+          return;
+        }
+      };
+      const activeStatuses = ["pending", "running"];
+      const currentStatus = "{{ job.status }}";
+      if (currentStatus === "completed") {
+        const credentials = readStoredJson(sessionStore, pendingApiCredentialKey);
+        if (credentials && credentials.api_key) {
+          writeStoredJson(localStore, savedApiCredentialKey, {
+            base_url: credentials.base_url || "",
+            api_key: credentials.api_key,
+            model_choice: credentials.model_choice || "",
+            custom_model: credentials.custom_model || "",
+          });
+          removeStoredItem(sessionStore, pendingApiCredentialKey);
+        }
+      }
+      if (activeStatuses.includes(currentStatus)) {
+        window.setInterval(async () => {
+          try {
+            const response = await fetch("{{ url_for('api_custom_job', access_token=job.access_token) }}");
+            const data = await response.json();
+            if (!data.ok || !data.job) return;
+            if (!activeStatuses.includes(data.job.status)) window.location.reload();
+          } catch (error) {
+            return;
+          }
+        }, 5000);
+      }
+    </script>
+  </body>
+</html>

@@ -1,5 +1,4 @@
 import base64
-import binascii
 import json
 import os
 import secrets
@@ -16,6 +15,7 @@ from flask import (
     abort,
     flash,
     g,
+    has_app_context,
     jsonify,
     redirect,
     render_template,
@@ -150,6 +150,7 @@ def init_database() -> None:
                 filename TEXT NOT NULL UNIQUE,
                 user_id INTEGER,
                 job_id INTEGER,
+                access_token TEXT,
                 visibility TEXT NOT NULL DEFAULT 'public',
                 source TEXT NOT NULL DEFAULT 'custom',
                 prompt TEXT NOT NULL DEFAULT '',
@@ -197,6 +198,31 @@ def init_database() -> None:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS custom_generation_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                access_token TEXT NOT NULL UNIQUE,
+                user_id INTEGER,
+                status TEXT NOT NULL DEFAULT 'pending',
+                prompt TEXT NOT NULL,
+                effective_prompt TEXT NOT NULL DEFAULT '',
+                prompt_polished INTEGER NOT NULL DEFAULT 0,
+                base_url TEXT NOT NULL DEFAULT '',
+                api_key_encrypted TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                size TEXT NOT NULL DEFAULT '',
+                quality TEXT NOT NULL DEFAULT '',
+                background TEXT NOT NULL DEFAULT '',
+                output_format TEXT NOT NULL DEFAULT 'png',
+                style TEXT NOT NULL DEFAULT '',
+                n INTEGER NOT NULL DEFAULT 1,
+                error_message TEXT NOT NULL DEFAULT '',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            );
+
             CREATE TABLE IF NOT EXISTS credit_ledger (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -213,15 +239,22 @@ def init_database() -> None:
                 ON images (visibility, created_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS idx_images_user_created
                 ON images (user_id, created_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_images_access_token
+                ON images (access_token);
             CREATE INDEX IF NOT EXISTS idx_jobs_status_created
                 ON generation_jobs (status, created_at ASC, id ASC);
             CREATE INDEX IF NOT EXISTS idx_jobs_user_created
                 ON generation_jobs (user_id, created_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_custom_jobs_status_created
+                ON custom_generation_jobs (status, created_at ASC, id ASC);
+            CREATE INDEX IF NOT EXISTS idx_custom_jobs_token
+                ON custom_generation_jobs (access_token);
             CREATE INDEX IF NOT EXISTS idx_ledger_user_created
                 ON credit_ledger (user_id, created_at DESC, id DESC);
             """
         )
         ensure_column(db, "images", "job_id", "INTEGER")
+        ensure_column(db, "images", "access_token", "TEXT")
         db.execute(
             """
             INSERT OR IGNORE INTO provider_configs (
@@ -494,6 +527,24 @@ def api_my_jobs():
     return jsonify({"ok": True, "jobs": jobs})
 
 
+@app.route(route_path("/jobs/<access_token>"))
+def custom_job_status(access_token: str):
+    job = load_custom_job(access_token)
+    if not job:
+        abort(404)
+    images = load_custom_job_images(access_token)
+    return render_template("custom_job.html", job=job, images=images)
+
+
+@app.get(route_path("/api/jobs/<access_token>"))
+def api_custom_job(access_token: str):
+    job = load_custom_job(access_token)
+    if not job:
+        abort(404)
+    images = load_custom_job_images(access_token)
+    return jsonify({"ok": True, "job": job, "image_count": len(images)})
+
+
 @app.route(route_path("/admin"))
 @admin_required
 def admin_dashboard():
@@ -503,8 +554,20 @@ def admin_dashboard():
         "images": db.execute("SELECT COUNT(*) FROM images").fetchone()[0],
         "public_images": db.execute("SELECT COUNT(*) FROM images WHERE visibility = 'public'").fetchone()[0],
         "private_images": db.execute("SELECT COUNT(*) FROM images WHERE visibility = 'private'").fetchone()[0],
-        "pending_jobs": db.execute("SELECT COUNT(*) FROM generation_jobs WHERE status = 'pending'").fetchone()[0],
-        "running_jobs": db.execute("SELECT COUNT(*) FROM generation_jobs WHERE status = 'running'").fetchone()[0],
+        "pending_jobs": db.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM generation_jobs WHERE status = 'pending') +
+                (SELECT COUNT(*) FROM custom_generation_jobs WHERE status = 'pending')
+            """
+        ).fetchone()[0],
+        "running_jobs": db.execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM generation_jobs WHERE status = 'running') +
+                (SELECT COUNT(*) FROM custom_generation_jobs WHERE status = 'running')
+            """
+        ).fetchone()[0],
     }
     recent_users = db.execute(
         "SELECT id, username, credits, is_admin, created_at FROM users ORDER BY id DESC LIMIT 20"
@@ -775,6 +838,7 @@ def image_row_to_dict(row: sqlite3.Row) -> dict:
         "id": row["id"],
         "url": url_for("generated_file", filename=row["filename"]),
         "filename": row["filename"],
+        "access_token": row["access_token"] if "access_token" in row.keys() else None,
         "revised_prompt": row["revised_prompt"],
         "prompt": row["prompt"],
         "effective_prompt": row["effective_prompt"],
@@ -788,19 +852,20 @@ def image_row_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
-def create_image_record(entry: dict, commit: bool = True) -> dict:
-    db = get_db()
-    db.execute(
+def create_image_record(entry: dict, commit: bool = True, db: sqlite3.Connection | None = None) -> dict:
+    connection = db or get_db()
+    connection.execute(
         """
         INSERT INTO images (
-            filename, user_id, job_id, visibility, source, prompt, effective_prompt,
+            filename, user_id, job_id, access_token, visibility, source, prompt, effective_prompt,
             prompt_polished, model, revised_prompt, created_at, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             entry["filename"],
             entry.get("user_id"),
             entry.get("job_id"),
+            entry.get("access_token"),
             entry.get("visibility", "public"),
             entry.get("source", "custom"),
             entry.get("prompt", ""),
@@ -813,7 +878,7 @@ def create_image_record(entry: dict, commit: bool = True) -> dict:
         ),
     )
     if commit:
-        db.commit()
+        connection.commit()
     return entry
 
 
@@ -982,6 +1047,55 @@ def create_builtin_job(form_values: dict) -> int:
     return job_id
 
 
+def create_custom_job(form_values: dict) -> str:
+    effective_api_key = form_values["api_key"] or DEFAULTS["api_key"]
+    if not effective_api_key:
+        raise ValueError("请先填写 API Key。")
+    if form_values["model_choice"] == "__custom__" and not form_values["custom_model"]:
+        raise ValueError("选择自定义模型时，请填写模型名称。")
+
+    original_prompt = form_values["prompt"]
+    effective_prompt = polish_prompt_text(original_prompt) if form_values["polish_prompt"] else original_prompt
+    resolved_model = resolve_model_name(
+        {
+            "model": form_values["model_choice"],
+            "custom_model": form_values.get("custom_model", ""),
+        }
+    )
+    requested_n = max(1, min(int(form_values["n"]), 10))
+    access_token = secrets.token_urlsafe(32)
+
+    db = get_db()
+    db.execute(
+        """
+        INSERT INTO custom_generation_jobs (
+            access_token, user_id, status, prompt, effective_prompt, prompt_polished,
+            base_url, api_key_encrypted, model, size, quality, background,
+            output_format, style, n, created_at
+        ) VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            access_token,
+            current_user_id(),
+            original_prompt,
+            effective_prompt,
+            1 if form_values["polish_prompt"] else 0,
+            form_values["base_url"],
+            encrypt_secret(effective_api_key),
+            resolved_model,
+            form_values["size"],
+            form_values["quality"],
+            form_values["background"],
+            form_values["output_format"],
+            form_values["style"],
+            requested_n,
+            now_text(),
+        ),
+    )
+    db.commit()
+    return access_token
+
+
 def load_user_jobs(user_id: int, limit: int = 120) -> list[dict]:
     rows = get_db().execute(
         """
@@ -1012,6 +1126,29 @@ def load_job_images(job_id: int) -> list[dict]:
     return [image_row_to_dict(row) for row in rows]
 
 
+def load_custom_job(access_token: str, db: sqlite3.Connection | None = None) -> dict | None:
+    connection = db or get_db()
+    row = connection.execute(
+        "SELECT * FROM custom_generation_jobs WHERE access_token = ?",
+        (access_token,),
+    ).fetchone()
+    return custom_job_row_to_dict(row) if row else None
+
+
+def load_custom_job_images(access_token: str) -> list[dict]:
+    rows = get_db().execute(
+        """
+        SELECT images.*, users.username
+        FROM images
+        LEFT JOIN users ON users.id = images.user_id
+        WHERE images.access_token = ?
+        ORDER BY images.created_at ASC, images.id ASC
+        """,
+        (access_token,),
+    ).fetchall()
+    return [image_row_to_dict(row) for row in rows]
+
+
 def job_row_to_dict(row: sqlite3.Row) -> dict:
     job = dict(row)
     job["status_label"] = JOB_STATUS_LABELS.get(job["status"], job["status"])
@@ -1019,8 +1156,18 @@ def job_row_to_dict(row: sqlite3.Row) -> dict:
     return job
 
 
+def custom_job_row_to_dict(row: sqlite3.Row) -> dict:
+    job = dict(row)
+    job.pop("api_key_encrypted", None)
+    job["status_label"] = JOB_STATUS_LABELS.get(job["status"], job["status"])
+    job["prompt_polished"] = bool(job["prompt_polished"])
+    return job
+
+
 def running_jobs_count(db: sqlite3.Connection) -> int:
-    return int(db.execute("SELECT COUNT(*) FROM generation_jobs WHERE status = 'running'").fetchone()[0])
+    builtin_running = int(db.execute("SELECT COUNT(*) FROM generation_jobs WHERE status = 'running'").fetchone()[0])
+    custom_running = int(db.execute("SELECT COUNT(*) FROM custom_generation_jobs WHERE status = 'running'").fetchone()[0])
+    return builtin_running + custom_running
 
 
 def claim_next_job(db: sqlite3.Connection) -> dict | None:
@@ -1081,9 +1228,85 @@ def complete_job(db: sqlite3.Connection, job: dict, image_entries: list[dict]) -
             return
 
         for entry in image_entries:
-            create_image_record(entry, commit=False)
+            create_image_record(entry, commit=False, db=db)
         db.execute(
             "UPDATE generation_jobs SET status = 'completed', completed_at = ? WHERE id = ?",
+            (now_text(), job["id"]),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def claim_next_custom_job(db: sqlite3.Connection) -> dict | None:
+    config = get_provider_config(db=db)
+    max_running = max(1, int(config.get("max_concurrent_jobs", 1) or 1))
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        if running_jobs_count(db) >= max_running:
+            db.rollback()
+            return None
+
+        row = db.execute(
+            """
+            SELECT * FROM custom_generation_jobs
+            WHERE status = 'pending'
+            ORDER BY created_at ASC, id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            db.rollback()
+            return None
+        db.execute(
+            "UPDATE custom_generation_jobs SET status = 'running', started_at = ?, attempts = attempts + 1 WHERE id = ?",
+            (now_text(), row["id"]),
+        )
+        db.commit()
+        job = dict(row)
+        job["status"] = "running"
+        return job
+    except Exception:
+        db.rollback()
+        raise
+
+
+def fail_custom_job(db: sqlite3.Connection, job: dict, error_message: str) -> None:
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        current = db.execute("SELECT status FROM custom_generation_jobs WHERE id = ?", (job["id"],)).fetchone()
+        if current and current["status"] == "running":
+            db.execute(
+                """
+                UPDATE custom_generation_jobs
+                SET status = 'failed', error_message = ?, api_key_encrypted = '', completed_at = ?
+                WHERE id = ?
+                """,
+                (error_message[:500], now_text(), job["id"]),
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def complete_custom_job(db: sqlite3.Connection, job: dict, image_entries: list[dict]) -> None:
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        current = db.execute("SELECT status FROM custom_generation_jobs WHERE id = ?", (job["id"],)).fetchone()
+        if not current or current["status"] != "running":
+            db.rollback()
+            return
+
+        for entry in image_entries:
+            create_image_record(entry, commit=False, db=db)
+        db.execute(
+            """
+            UPDATE custom_generation_jobs
+            SET status = 'completed', api_key_encrypted = '', completed_at = ?
+            WHERE id = ?
+            """,
             (now_text(), job["id"]),
         )
         db.commit()
@@ -1114,7 +1337,55 @@ def build_job_image_params(job: dict) -> dict:
     )
 
 
+def process_custom_generation_job(job: dict) -> None:
+    if not has_app_context():
+        with app.app_context():
+            process_custom_generation_job(job)
+        return
+
+    db = open_worker_db()
+    try:
+        api_key = decrypt_secret(job.get("api_key_encrypted", ""))
+        if not api_key:
+            raise ValueError("自定义接口密钥无法读取，请重新提交任务。")
+
+        client = build_client(api_key, job["base_url"])
+        request_payload = build_job_image_params(job)
+        response = client.images.generate(**request_payload)
+        output_format = request_payload.get("output_format", "png")
+        image_entries = []
+        for item in response.data:
+            image_bytes, detected_format = decode_image_payload(item, output_format)
+            filename = save_image(image_bytes, detected_format)
+            image_entries.append(
+                {
+                    "filename": filename,
+                    "user_id": job.get("user_id"),
+                    "access_token": job["access_token"],
+                    "visibility": "public",
+                    "source": "custom",
+                    "revised_prompt": getattr(item, "revised_prompt", None),
+                    "prompt": job["prompt"],
+                    "effective_prompt": job["effective_prompt"],
+                    "prompt_polished": bool(job["prompt_polished"]),
+                    "model": request_payload["model"],
+                    "created_at": now_text(),
+                    "metadata": {"custom_job_id": job["id"]},
+                }
+            )
+        complete_custom_job(db, job, image_entries)
+    except Exception as exc:  # noqa: BLE001
+        fail_custom_job(db, job, str(exc))
+    finally:
+        db.close()
+
+
 def process_generation_job(job: dict) -> None:
+    if not has_app_context():
+        with app.app_context():
+            process_generation_job(job)
+        return
+
     db = open_worker_db()
     try:
         config = get_provider_config(include_secret=True, db=db)
@@ -1147,25 +1418,43 @@ def process_generation_job(job: dict) -> None:
             )
         complete_job(db, job, image_entries)
     except Exception as exc:  # noqa: BLE001
-        refund_job(db, job, str(exc))
+        error_message = str(exc)
+        try:
+            refund_job(db, job, error_message)
+        except Exception as refund_exc:  # noqa: BLE001
+            try:
+                db.rollback()
+                db.execute(
+                    "UPDATE generation_jobs SET status = 'failed', error_message = ?, completed_at = ? WHERE id = ?",
+                    (f"{error_message}；退款失败：{refund_exc}"[:500], now_text(), job["id"]),
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
     finally:
         db.close()
 
 
 def generation_worker_loop() -> None:
-    while True:
-        db = open_worker_db()
-        try:
-            job = claim_next_job(db)
-        except Exception:
-            job = None
-        finally:
-            db.close()
+    with app.app_context():
+        while True:
+            db = open_worker_db()
+            try:
+                job = claim_next_job(db)
+                custom_job = None if job else claim_next_custom_job(db)
+            except Exception:
+                job = None
+                custom_job = None
+            finally:
+                db.close()
 
-        if job:
-            process_generation_job(job)
-            continue
-        time.sleep(WORKER_POLL_SECONDS)
+            if job:
+                process_generation_job(job)
+                continue
+            if custom_job:
+                process_custom_generation_job(custom_job)
+                continue
+            time.sleep(WORKER_POLL_SECONDS)
 
 
 def start_generation_worker() -> None:
@@ -1244,51 +1533,9 @@ def index():
                 flash("内置接口任务已提交，请在任务列表查看生成进度。")
                 return redirect(url_for("my_jobs", job_id=job_id))
 
-            effective_api_key = form_values["api_key"] or DEFAULTS["api_key"]
-            if not effective_api_key:
-                raise ValueError("请先填写 API Key。")
-            if form_values["model_choice"] == "__custom__" and not form_values["custom_model"]:
-                raise ValueError("选择自定义模型时，请填写模型名称。")
-
-            client = build_client(effective_api_key, form_values["base_url"])
-            original_prompt = form_values["prompt"]
-            effective_prompt = (
-                polish_prompt_text(original_prompt)
-                if form_values["polish_prompt"]
-                else original_prompt
-            )
-            form_values["model"] = form_values["model_choice"]
-            resolved_model = resolve_model_name(form_values)
-            form_values["model"] = resolved_model
-            form_values["prompt"] = effective_prompt
-            request_payload = build_image_params(form_values)
-            form_values["prompt"] = original_prompt
-            response = client.images.generate(**request_payload)
-
-            output_format = request_payload.get("output_format", "png")
-            new_history = []
-            for item in response.data:
-                image_bytes, detected_format = decode_image_payload(item, output_format)
-                filename = save_image(image_bytes, detected_format)
-                history_entry = {
-                    "url": url_for("generated_file", filename=filename),
-                    "filename": filename,
-                    "user_id": current_user_id(),
-                    "visibility": "public",
-                    "source": "custom",
-                    "revised_prompt": getattr(item, "revised_prompt", None),
-                    "prompt": original_prompt,
-                    "effective_prompt": effective_prompt,
-                    "prompt_polished": form_values["polish_prompt"],
-                    "model": request_payload["model"],
-                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                images.append(history_entry)
-                new_history.append(history_entry)
-
-            append_history(new_history)
-        except binascii.Error:
-            error = "返回的图片数据无法解析，请确认接口兼容 OpenAI 图片返回格式。"
+            access_token = create_custom_job(form_values)
+            flash("任务已提交，生成完成后会自动显示结果。")
+            return redirect(url_for("custom_job_status", access_token=access_token))
         except Exception as exc:  # noqa: BLE001
             error = str(exc)
 

@@ -394,12 +394,6 @@
               </div>
             </form>
 
-            {% if error %}
-            <div class="mt-5 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
-              {{ error }}
-            </div>
-            {% endif %}
-
             <section class="mt-10">
               <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -556,6 +550,8 @@
       </div>
     </div>
 
+    {% include "_modal_messages.html" %}
+
     <script>
       const form = document.getElementById("generate-form");
       const overlay = document.getElementById("loading-overlay");
@@ -692,6 +688,7 @@
         const generationMode = generationModeInputs.find((input) => input.checked)?.value || "custom";
         if (generationMode !== "custom") return;
         if (credentials.api_key) {
+          credentials.status_url = "pending";
           writeStoredJson(sessionStore, pendingApiCredentialKey, credentials);
           return;
         }
