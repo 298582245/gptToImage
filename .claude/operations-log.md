@@ -177,3 +177,9 @@
 - 操作：新增 /my/credits 用户积分记录页，读取 credit_ledger 并区分图片生成、提示词润色、充值、退款、管理员调整；首页、我的任务、我的图片、充值页增加积分记录入口；图片生成扣费流水改为记录“单价 × 张数”，现有扣费逻辑为 price_per_image * requested_n。
 - 修改：app.py, templates/my_credits.html, templates/index.html, templates/my_jobs.html, templates/my_images.html, templates/recharge.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 23:37（UTC+8） Codex
+- 任务：润色确认结果出现后自动滚动到提示框。
+- 操作：首页润色确认面板增加 polish-preview-panel 锚点；页面加载时检测到该面板后自动 smooth scroll 到确认区域，避免用户看不到润色后的提示词。
+- 修改：templates/index.html。
+- 验证：仅做文本静态检查，未运行项目。
