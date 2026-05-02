@@ -32,6 +32,18 @@
           </div>
           <span class="rounded-full bg-stone-100 px-3 py-1.5 text-sm text-stone-600">消耗 {{ selected_job.cost }} 积分</span>
         </div>
+        {% if selected_job.prompt_polished %}
+        <div class="mt-5 grid gap-3 rounded-[24px] border border-stone-200 bg-stone-50 p-4 md:grid-cols-2">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wide text-stone-400">原始提示词</p>
+            <p class="mt-2 text-sm leading-6 text-stone-700">{{ selected_job.prompt }}</p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wide text-stone-400">润色后提示词</p>
+            <p class="mt-2 text-sm leading-6 text-stone-700">{{ selected_job.effective_prompt }}</p>
+          </div>
+        </div>
+        {% endif %}
         {% if selected_images %}
         <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {% for image in selected_images %}
@@ -60,6 +72,9 @@
                 </div>
                 <p class="mt-2 truncate text-sm font-medium">{{ job.model }}</p>
                 <p class="mt-1 line-clamp-2 text-sm text-stone-500">{{ job.prompt }}</p>
+                {% if job.prompt_polished %}
+                <p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-400">润色后：{{ job.effective_prompt }}</p>
+                {% endif %}
               </div>
               <div class="shrink-0 text-sm text-stone-500">{{ job.cost }} 积分 · {{ job.image_count }} 张结果</div>
             </div>

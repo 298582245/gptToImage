@@ -36,6 +36,12 @@
             </div>
             <h2 class="truncate text-sm font-medium text-stone-900">{{ image.model }}</h2>
             <p class="line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
+            {% if image.prompt_polished %}
+            <div class="rounded-2xl border border-stone-200 bg-stone-50 p-3">
+              <p class="text-xs font-medium text-stone-400">润色后提示词</p>
+              <p class="mt-1 line-clamp-4 text-sm leading-6 text-stone-700">{{ image.effective_prompt }}</p>
+            </div>
+            {% endif %}
             <a class="text-xs font-medium text-stone-900" href="{{ image.url }}" target="_blank" rel="noopener noreferrer">查看原图</a>
           </div>
         </article>

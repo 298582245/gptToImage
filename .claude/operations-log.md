@@ -141,3 +141,9 @@
 - 操作：检查 admin_required、validate_csrf_token、admin_image_hide、admin_image_restore 与隐藏图片访问控制；确认隐藏/恢复接口均为 POST、带管理员装饰器和 CSRF 校验，ban_user 仅在通过管理员校验后处理。
 - 修改：无业务代码修改，仅追加审计日志。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 22:27（UTC+8） Codex
+- 任务：将提示词润色后的实际提示词展示给用户。
+- 操作：首页结果卡片、公共画廊、内置接口任务详情/列表、自定义任务详情、我的图片页面均在 prompt_polished 时显示 effective_prompt。
+- 修改：templates/index.html, templates/my_jobs.html, templates/custom_job.html, templates/my_images.html。
+- 验证：仅做文本静态检查，未运行项目。
