@@ -87,3 +87,15 @@
 ## 2026-05-02 19:38（UTC+8） Codex
 - 任务：删除废弃 templates/admin.html 旧积分表单页，避免继续引用已移除的后台路由。
 - 验证：仅用 rg 关键引用做文本检查，未找到旧积分路由的代码入口。
+
+## 2026-05-02 19:45（UTC+8） Codex
+- 任务：将管理员用户编辑从行内表单改为弹窗。
+- 操作：用户列表行仅保留编辑、禁用和删除按钮；点击编辑打开弹窗修改积分和密码。
+- 修改：templates/admin_users.html。
+- 验证：按用户要求仅做文本静态检查，未运行项目。
+
+## 2026-05-02 20:18（UTC+8） Codex
+- 任务：新增卡密充值积分功能。
+- 操作：新增 redeem_codes、redeem_code_uses、recharge_settings 数据表；支持单人一次卡和多人上限卡；用户可输入卡密充值；管理员可批量生成、软删卡密并配置充值公告。
+- 修改：app.py, templates/index.html, templates/admin_layout.html, templates/recharge.html, templates/admin_redeem_codes.html。
+- 验证：仅做 rg 引用和关键代码文本检查；未安装依赖，未启动项目，未运行 Docker。
