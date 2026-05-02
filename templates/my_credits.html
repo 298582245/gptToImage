@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>积分记录 - AI Image Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-stone-900">
+    <main class="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <header class="flex flex-col gap-4 border-b border-stone-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-sm text-stone-500">{{ current_user.username }} · 当前剩余 {{ current_user.credits }} 积分</p>
+          <h1 class="mt-1 text-3xl font-semibold tracking-tight">积分记录</h1>
+        </div>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
+          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('recharge') }}">充值积分</a>
+        </div>
+      </header>
+
+      <section class="mt-8 overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
+          <h2 class="text-lg font-semibold">最近 100 条明细</h2>
+          <span class="text-xs text-stone-400">画图、润色、充值、退款都会记录</span>
+        </div>
+        {% if records %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-stone-100 text-sm">
+            <thead class="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+              <tr>
+                <th class="px-5 py-3 font-medium">时间</th>
+                <th class="px-5 py-3 font-medium">类型</th>
+                <th class="px-5 py-3 font-medium">说明</th>
+                <th class="px-5 py-3 font-medium">数量</th>
+                <th class="px-5 py-3 text-right font-medium">积分变化</th>
+                <th class="px-5 py-3 text-right font-medium">变动后余额</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100">
+              {% for record in records %}
+              <tr class="hover:bg-stone-50/70">
+                <td class="whitespace-nowrap px-5 py-4 text-stone-500">{{ record.created_at }}</td>
+                <td class="whitespace-nowrap px-5 py-4">
+                  <span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">{{ record.type_label }}</span>
+                </td>
+                <td class="px-5 py-4 text-stone-700">
+                  <div>{{ record.reason }}</div>
+                  {% if record.job_id %}
+                  <div class="mt-1 text-xs text-stone-400">任务 #{{ record.job_id }}{% if record.job_model %} · {{ record.job_model }}{% endif %}</div>
+                  {% endif %}
+                </td>
+                <td class="whitespace-nowrap px-5 py-4 text-stone-500">
+                  {% if record.image_count %}{{ record.image_count }} 张{% else %}-{% endif %}
+                </td>
+                <td class="whitespace-nowrap px-5 py-4 text-right font-semibold {% if record.amount > 0 %}text-emerald-600{% else %}text-red-600{% endif %}">{{ record.amount_label }}</td>
+                <td class="whitespace-nowrap px-5 py-4 text-right text-stone-700">{{ record.balance_after }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-10 text-center text-sm text-stone-500">暂无积分记录。</div>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>

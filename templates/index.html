@@ -107,6 +107,7 @@
               {% if current_user %}
               <a class="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-stone-700" href="{{ url_for('my_images') }}">{{ current_user.username }}</a>
               <a class="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-stone-700" href="{{ url_for('recharge') }}">充值积分</a>
+              <a class="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-stone-700" href="{{ url_for('my_credits') }}">积分记录</a>
               {% if current_user.is_admin %}
               <a class="inline-flex items-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-stone-700" href="{{ url_for('admin_dashboard') }}">管理员</a>
               {% endif %}
@@ -167,6 +168,7 @@
                         <p class="text-sm font-medium text-stone-900">使用站内内置接口{% if current_user %}（剩余积分：{{ current_user.credits }}）{% endif %}</p>
                         <p class="mt-1 text-xs leading-5 text-stone-500">
                           需登录，{{ provider_config.price_per_image }} 积分/张；提交后进入队列，结果仅自己可见。
+                          {% if provider_config.polish_price %}润色 {{ provider_config.polish_price }} 积分/次。{% endif %}
                         </p>
                       </div>
                     </div>
@@ -320,7 +322,10 @@
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p class="text-sm font-semibold text-amber-900">请确认润色后的提示词</p>
-                        <p class="mt-1 text-xs leading-5 text-amber-700">当前还没有提交生图任务；内置接口也还没有扣积分。确认无误后点击“确认并生成”。</p>
+                        <p class="mt-1 text-xs leading-5 text-amber-700">当前还没有提交生图任务；站内接口的图片生成积分会在确认后扣除。确认无误后点击“确认并生成”。</p>
+                        {% if polish_preview.polish_price %}
+                        <p class="mt-1 text-xs leading-5 text-amber-700">本次润色已扣 {{ polish_preview.polish_price }} 积分。</p>
+                        {% endif %}
                       </div>
                       <div class="flex flex-wrap gap-2">
                         <span class="rounded-full bg-white/80 px-3 py-1.5 text-xs text-amber-800">{{ polish_preview.category.label }}</span>

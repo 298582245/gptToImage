@@ -58,7 +58,7 @@
   <div class="flex items-start justify-between gap-4">
     <div>
       <h3 class="text-lg font-semibold">AI 提示词润色接口</h3>
-      <p class="mt-1 text-sm text-stone-500">仅站内内置接口生图时使用。用户开启润色后，会先看到润色结果，确认后才扣积分并提交生图任务。</p>
+      <p class="mt-1 text-sm text-stone-500">仅站内内置接口生图时使用。用户开启润色后，会先看到润色结果；润色价格可设为 0 用于前期引流。</p>
     </div>
     <span class="rounded-full bg-stone-100 px-3 py-1.5 text-xs text-stone-600">和上方一起保存</span>
   </div>
@@ -75,6 +75,10 @@
     <label class="block">
       <span class="mb-2 block text-sm font-medium text-stone-600">润色模型</span>
       <input form="provider-config-form" name="polish_model" value="{{ provider_config.polish_model }}" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400" placeholder="gpt-4o-mini">
+    </label>
+    <label class="block">
+      <span class="mb-2 block text-sm font-medium text-stone-600">每次润色积分</span>
+      <input form="provider-config-form" type="number" min="0" name="polish_price" value="{{ provider_config.polish_price }}" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm outline-none focus:border-stone-400" placeholder="0">
     </label>
     <label class="flex items-center gap-2 self-end rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
       <input form="provider-config-form" type="checkbox" name="polish_enabled" {% if provider_config.polish_enabled %}checked{% endif %}>

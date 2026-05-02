@@ -271,6 +271,7 @@ def init_database() -> None:
                 polish_api_key_encrypted TEXT NOT NULL DEFAULT '',
                 polish_model TEXT NOT NULL DEFAULT '',
                 polish_enabled INTEGER NOT NULL DEFAULT 0,
+                polish_price INTEGER NOT NULL DEFAULT 0,
                 price_per_image INTEGER NOT NULL DEFAULT 1,
                 enabled INTEGER NOT NULL DEFAULT 0,
                 max_concurrent_jobs INTEGER NOT NULL DEFAULT 1,
@@ -395,6 +396,7 @@ def init_database() -> None:
         ensure_column(db, "provider_configs", "polish_api_key_encrypted", "TEXT NOT NULL DEFAULT ''")
         ensure_column(db, "provider_configs", "polish_model", "TEXT NOT NULL DEFAULT ''")
         ensure_column(db, "provider_configs", "polish_enabled", "INTEGER NOT NULL DEFAULT 0")
+        ensure_column(db, "provider_configs", "polish_price", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "redeem_codes", "batch_id", "TEXT NOT NULL DEFAULT ''")
         db.execute("CREATE INDEX IF NOT EXISTS idx_images_access_token ON images (access_token)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch ON redeem_codes (batch_id)")
@@ -675,6 +677,13 @@ def my_jobs():
             selected_job = job_row_to_dict(row)
             selected_images = load_job_images(selected_job_id)
     return render_template("my_jobs.html", jobs=jobs, selected_job=selected_job, selected_images=selected_images)
+
+
+@app.route(route_path("/my/credits"))
+@login_required
+def my_credits():
+    records = load_user_credit_records(current_user_id(), limit=100)
+    return render_template("my_credits.html", records=records)
 
 
 @app.get(route_path("/api/my/jobs"))
@@ -1566,10 +1575,12 @@ def resolve_inspirer_category(prompt: str, category_value: str = "auto") -> dict
             continue
         if any(keyword.lower() in lowered_prompt for keyword in category["keywords"]):
             return category
-    return INSPIRER_CATEGORY_BY_VALUE["creative"]
+    return INSPIRER_CATEGORY_BY_VALUE["auto"]
 
 
 def extract_inspirer_examples(category: dict, limit: int = 2) -> list[str]:
+    if not category.get("directory"):
+        return []
     prompt_file = IMAGE_INSPIRER_DB_DIR / category["directory"] / "prompt.md"
     if not prompt_file.exists():
         return []
@@ -1642,12 +1653,18 @@ def polish_prompt_text(prompt: str, category_value: str = "auto") -> str:
     examples = extract_inspirer_examples(category)
     style_hints = build_inspirer_style_hints(examples)
     scene_hints = infer_prompt_scene_hints(prompt)
-    detail_sentence = "，".join(scene_hints) if scene_hints else "主体关系明确，构图清晰，环境空间完整，细节真实丰富"
+    detail_parts = []
+    if category["value"] != "auto":
+        detail_parts.append(f"画面方向：{category['label']}")
+    if scene_hints:
+        detail_parts.append("，".join(scene_hints))
+    detail_sentence = "。".join(detail_parts)
+    style_sentence = f"视觉风格：{style_hints}，电影感构图，真实光影，高质量细节，色彩协调，主体突出，背景不杂乱。"
 
     return (
         f"{prompt}。"
-        f"画面方向：{category['label']}；{detail_sentence}。"
-        f"视觉风格：{style_hints}，电影感构图，真实光影，高质量细节，色彩协调，主体突出，背景不杂乱。"
+        f"{detail_sentence + '。' if detail_sentence else ''}"
+        f"{style_sentence}"
         "镜头要求：中景到全景视角，空间层次清晰，适度景深，画面比例稳定。"
         "负面约束：不要水印、不要乱码文字、不要畸形肢体、不要低清晰度、不要过度拥挤、不要风格漂移。"
     )
@@ -1661,14 +1678,17 @@ def polish_prompt_with_ai(prompt: str, category_value: str = "auto") -> str:
     if not config.get("polish_enabled") or not config.get("polish_api_key") or not config.get("polish_base_url") or not config.get("polish_model"):
         raise ValueError("管理员暂未配置可用的 AI 润色接口。")
 
-    category = resolve_inspirer_category(prompt, category_value)
     client = build_client(config["polish_api_key"], config["polish_base_url"])
     system_prompt = (
         "你是专业图像生成提示词优化器。请把用户中文需求改写成最终可直接发送给生图模型的中文提示词。"
         "只输出润色后的提示词，不要解释、不要标题、不要 Markdown。保持主体和核心意图不变，补充构图、主体细节、环境、镜头、光线、色彩、材质、景深和画质要求。"
         "不要编造与原需求冲突的内容，不要加入水印、乱码文字、畸形肢体、低清晰度等负面元素。"
     )
-    user_prompt = f"原始提示词：{prompt}\n润色方向：{category['label']}"
+    if category_value == "auto":
+        user_prompt = f"原始提示词：{prompt}\n请自行判断最适合的视觉方向，不要被固定分类限制。"
+    else:
+        category = resolve_inspirer_category(prompt, category_value)
+        user_prompt = f"原始提示词：{prompt}\n用户指定润色方向：{category['label']}"
     response = client.chat.completions.create(
         model=config["polish_model"],
         messages=[
@@ -1839,12 +1859,13 @@ def update_provider_config(form_data) -> None:
     max_concurrent_jobs = max(1, min(int(form_data.get("max_concurrent_jobs", 1) or 1), 5))
     per_user_pending_limit = max(1, min(int(form_data.get("per_user_pending_limit", 3) or 3), 20))
     price_per_image = max(0, int(form_data.get("price_per_image", 1) or 0))
+    polish_price = max(0, int(form_data.get("polish_price", 0) or 0))
 
     get_db().execute(
         """
         UPDATE provider_configs
         SET base_url = ?, api_key_encrypted = ?, model = ?, price_per_image = ?,
-            polish_base_url = ?, polish_api_key_encrypted = ?, polish_model = ?, polish_enabled = ?,
+            polish_base_url = ?, polish_api_key_encrypted = ?, polish_model = ?, polish_enabled = ?, polish_price = ?,
             enabled = ?, max_concurrent_jobs = ?, per_user_pending_limit = ?, updated_at = ?
         WHERE id = 1
         """,
@@ -1857,6 +1878,7 @@ def update_provider_config(form_data) -> None:
             encrypted_polish_key,
             form_data.get("polish_model", "").strip(),
             1 if form_data.get("polish_enabled") == "on" else 0,
+            polish_price,
             1 if form_data.get("enabled") == "on" else 0,
             max_concurrent_jobs,
             per_user_pending_limit,
@@ -1884,6 +1906,41 @@ def add_credit_ledger(db: sqlite3.Connection, user_id: int, amount: int, reason:
     return balance_after
 
 
+def credit_record_type(reason: str) -> str:
+    if "润色" in reason:
+        return "提示词润色"
+    if "退款" in reason or "取消" in reason:
+        return "积分退款"
+    if "生成" in reason or "画图" in reason:
+        return "图片生成"
+    if "充值" in reason or "卡密" in reason:
+        return "积分充值"
+    if "管理员" in reason:
+        return "管理员调整"
+    return "其他"
+
+
+def load_user_credit_records(user_id: int, limit: int = 100) -> list[dict]:
+    rows = get_db().execute(
+        """
+        SELECT ledger.*, jobs.n AS image_count, jobs.model AS job_model
+        FROM credit_ledger AS ledger
+        LEFT JOIN generation_jobs AS jobs ON jobs.id = ledger.job_id
+        WHERE ledger.user_id = ?
+        ORDER BY ledger.created_at DESC, ledger.id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    records = []
+    for row in rows:
+        record = dict(row)
+        record["type_label"] = credit_record_type(record["reason"])
+        record["amount_label"] = f"+{record['amount']}" if int(record["amount"]) > 0 else str(record["amount"])
+        records.append(record)
+    return records
+
+
 def user_active_jobs_count(db: sqlite3.Connection, user_id: int) -> int:
     return int(
         db.execute(
@@ -1906,7 +1963,8 @@ def create_builtin_job(form_values: dict) -> int:
         raise ValueError("你当前排队或生成中的任务太多，请稍后再提交。")
 
     requested_n = max(1, min(int(form_values["n"]), 10))
-    cost = int(config.get("price_per_image", 1)) * requested_n
+    price_per_image = int(config.get("price_per_image", 1))
+    cost = price_per_image * requested_n
     original_prompt = form_values["prompt"]
     effective_prompt = form_values.get("confirmed_effective_prompt", "").strip()
     confirmed_source = form_values.get("confirmed_prompt_source", "").strip()
@@ -1941,7 +1999,7 @@ def create_builtin_job(form_values: dict) -> int:
             ),
         )
         job_id = cursor.lastrowid
-        add_credit_ledger(db, user_id, -cost, "内置接口生成预扣", job_id)
+        add_credit_ledger(db, user_id, -cost, f"图片生成扣费：{price_per_image} 积分/张 × {requested_n} 张", job_id)
         db.commit()
     except Exception:
         db.rollback()
@@ -2008,16 +2066,26 @@ def build_builtin_polish_preview(form_values: dict) -> dict:
     user_id = current_user_id()
     if user_id is None:
         raise ValueError("请先登录后再使用内置接口。")
-    config = get_provider_config(db=get_db())
+    db = get_db()
+    config = get_provider_config(db=db)
     if not config.get("enabled") or not config.get("has_api_key") or not config.get("base_url"):
         raise ValueError("内置接口暂未启用，请联系管理员配置。")
+    polish_price = max(0, int(config.get("polish_price", 0) or 0))
+    if polish_price > 0:
+        user = db.execute("SELECT credits FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user or int(user["credits"]) < polish_price:
+            raise ValueError("积分不足，无法使用提示词润色。")
 
     original_prompt = form_values["prompt"].strip()
     effective_prompt = polish_prompt_with_ai(original_prompt, form_values.get("polish_category", "auto"))
+    if polish_price > 0:
+        add_credit_ledger(db, user_id, -polish_price, "提示词润色扣费")
+        db.commit()
     return {
         "original_prompt": original_prompt,
         "effective_prompt": effective_prompt,
         "category": resolve_inspirer_category(original_prompt, form_values.get("polish_category", "auto")),
+        "polish_price": polish_price,
     }
 
 

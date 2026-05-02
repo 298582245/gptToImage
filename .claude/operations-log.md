@@ -165,3 +165,15 @@
 - 操作：首页润色说明改为通用确认提示，不再说明自定义/内置分别使用什么润色方式；确认面板不显示 AI/本地标签；新增 polish_action=repolish 分支，点击“重新润色”可在当前表单直接重新生成润色结果，不提交生图任务。
 - 修改：app.py, templates/index.html。
 - 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 23:18（UTC+8） Codex
+- 任务：优化自动分类策略，并为站内 AI 润色增加可配置积分价格。
+- 操作：自动分类未命中时不再落到“其他应用场景”；内置 AI 润色在自动模式下让模型自行判断视觉方向，手动分类才作为强制方向；自定义本地润色识别不到分类时不写方向；provider_configs 增加 polish_price，后台可设置每次润色积分且默认 0；站内内置润色要求登录并按 polish_price 扣积分，价格为 0 时不扣费。
+- 修改：app.py, templates/admin_provider.html, templates/index.html。
+- 验证：仅做文本静态检查，未运行项目。
+
+## 2026-05-02 23:31（UTC+8） Codex
+- 任务：增加用户积分消耗记录，并核对多张图片扣费逻辑。
+- 操作：新增 /my/credits 用户积分记录页，读取 credit_ledger 并区分图片生成、提示词润色、充值、退款、管理员调整；首页、我的任务、我的图片、充值页增加积分记录入口；图片生成扣费流水改为记录“单价 × 张数”，现有扣费逻辑为 price_per_image * requested_n。
+- 修改：app.py, templates/my_credits.html, templates/index.html, templates/my_jobs.html, templates/my_images.html, templates/recharge.html。
+- 验证：仅做文本静态检查，未运行项目。
