@@ -62,3 +62,8 @@
 - 任务：修复内置接口扣费成功后报 Working outside of application context。
 - 操作：为 generation_worker_loop 添加 app.app_context，并为 process_generation_job/process_custom_generation_job 增加 has_app_context 兜底。
 - 验证：仅做关键代码静态查看；按用户要求未执行依赖安装、项目启动或本机环境检查。
+
+## 2026-05-02 18:08（UTC+8） Codex
+- 任务：修复旧 SQLite 库启动时报 no such column: access_token。
+- 操作：移除 executescript 内对新列 access_token 的索引创建，改为 ensure_column 之后单独创建 idx_images_access_token。
+- 验证：按用户要求未执行本机环境检查。

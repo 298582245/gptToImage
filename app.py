@@ -239,8 +239,6 @@ def init_database() -> None:
                 ON images (visibility, created_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS idx_images_user_created
                 ON images (user_id, created_at DESC, id DESC);
-            CREATE INDEX IF NOT EXISTS idx_images_access_token
-                ON images (access_token);
             CREATE INDEX IF NOT EXISTS idx_jobs_status_created
                 ON generation_jobs (status, created_at ASC, id ASC);
             CREATE INDEX IF NOT EXISTS idx_jobs_user_created
@@ -255,6 +253,7 @@ def init_database() -> None:
         )
         ensure_column(db, "images", "job_id", "INTEGER")
         ensure_column(db, "images", "access_token", "TEXT")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_images_access_token ON images (access_token)")
         db.execute(
             """
             INSERT OR IGNORE INTO provider_configs (
