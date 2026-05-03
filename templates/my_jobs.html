@@ -13,12 +13,12 @@
           <p class="text-sm text-stone-500">{{ current_user.username }} · {{ current_user.credits }} 积分</p>
           <h1 class="mt-1 text-3xl font-semibold tracking-tight">我的生成任务</h1>
         </div>
-        <div class="flex flex-wrap gap-3 text-sm">
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_images') }}">我的图片</a>
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_credits') }}">积分记录</a>
+        <div class="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap sm:justify-end sm:gap-3">
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_images') }}">我的图片</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_credits') }}">积分记录</a>
           {% if current_user.is_admin %}
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('admin_dashboard') }}">管理员后台</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('admin_dashboard') }}">管理员后台</a>
           {% endif %}
         </div>
       </header>
@@ -58,14 +58,14 @@
       {% endif %}
 
       <section class="mt-8 rounded-[28px] border border-stone-200 bg-white p-5 shadow-sm">
-        <div class="flex items-center justify-between gap-3">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 class="text-lg font-semibold">任务列表</h2>
-          <span class="text-xs text-stone-400">页面每 5 秒自动刷新状态</span>
+          <span class="text-xs text-stone-400">共 {{ pagination.total }} 条 · 当前第 {{ pagination.page }} / {{ pagination.total_pages }} 页；页面每 5 秒自动刷新状态</span>
         </div>
         <div id="job-list" class="mt-4 space-y-3">
           {% for job in jobs %}
-          <a href="{{ url_for('my_jobs', job_id=job.id) }}" class="block rounded-2xl border border-stone-100 bg-stone-50 p-4 transition hover:border-stone-300">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <a href="{{ url_for('my_jobs', job_id=job.id, page=pagination.page, per_page=pagination.per_page) }}" class="block rounded-2xl border border-stone-100 bg-stone-50 p-4 transition hover:border-stone-300">
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-600">{{ job.status_label }}</span>
@@ -77,7 +77,10 @@
                 <p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-400">润色后：{{ job.effective_prompt }}</p>
                 {% endif %}
               </div>
-              <div class="shrink-0 text-sm text-stone-500">{{ job.cost }} 积分 · {{ job.image_count }} 张结果</div>
+              <div class="flex shrink-0 flex-wrap gap-2 text-xs text-stone-500 md:justify-end">
+                <span class="rounded-full bg-white px-2.5 py-1">{{ job.cost }} 积分</span>
+                <span class="rounded-full bg-white px-2.5 py-1">{{ job.image_count }} 张结果</span>
+              </div>
             </div>
           </a>
           {% else %}
@@ -85,6 +88,37 @@
           {% endfor %}
         </div>
       </section>
+
+      {% if jobs %}
+      <nav class="mt-8 flex flex-col gap-3 rounded-[24px] border border-stone-200 bg-white p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center justify-center gap-2">
+          {% if selected_job %}
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_jobs', page=pagination.page - 1, per_page=pagination.per_page, job_id=selected_job.id) }}">上一页</a>
+          {% else %}
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_jobs', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+          {% endif %}
+          <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+          {% if selected_job %}
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_jobs', page=pagination.page + 1, per_page=pagination.per_page, job_id=selected_job.id) }}">下一页</a>
+          {% else %}
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_jobs', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+          {% endif %}
+        </div>
+        <form method="get" action="{{ url_for('my_jobs') }}" class="flex flex-wrap items-center justify-center gap-2 text-sm">
+          {% if selected_job %}
+          <input type="hidden" name="job_id" value="{{ selected_job.id }}">
+          {% endif %}
+          <span class="text-stone-500">跳到</span>
+          <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+          <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400" onchange="this.form.page.value = 1; this.form.submit()">
+            {% for size in [5, 10, 20, 50] %}
+            <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+            {% endfor %}
+          </select>
+          <button class="rounded-2xl bg-stone-900 px-4 py-2 text-white" type="submit">确定</button>
+        </form>
+      </nav>
+      {% endif %}
     </main>
 
     {% set error = selected_job.error_message if selected_job and selected_job.error_message else none %}

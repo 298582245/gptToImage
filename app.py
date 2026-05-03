@@ -694,7 +694,8 @@ def update_my_image_visibility(image_id: int):
 @login_required
 def my_jobs():
     selected_job_id = request.args.get("job_id", type=int)
-    jobs = load_user_jobs(current_user_id())
+    page, per_page = parse_page_params(5, (5, 10, 20, 50))
+    jobs, pagination = load_user_jobs_page(current_user_id(), page, per_page)
     selected_job = None
     selected_images = []
     if selected_job_id:
@@ -705,7 +706,13 @@ def my_jobs():
         if row:
             selected_job = job_row_to_dict(row)
             selected_images = load_job_images(selected_job_id)
-    return render_template("my_jobs.html", jobs=jobs, selected_job=selected_job, selected_images=selected_images)
+    return render_template(
+        "my_jobs.html",
+        jobs=jobs,
+        selected_job=selected_job,
+        selected_images=selected_images,
+        pagination=pagination,
+    )
 
 
 @app.route(route_path("/my/credits"))
@@ -2201,6 +2208,25 @@ def load_user_jobs(user_id: int, limit: int = 120) -> list[dict]:
         (user_id, limit),
     ).fetchall()
     return [job_row_to_dict(row) for row in rows]
+
+
+def load_user_jobs_page(user_id: int, page: int, per_page: int) -> tuple[list[dict], dict]:
+    db = get_db()
+    total = int(db.execute("SELECT COUNT(*) FROM generation_jobs WHERE user_id = ?", (user_id,)).fetchone()[0])
+    meta = pagination_meta(total, page, per_page)
+    rows = db.execute(
+        """
+        SELECT jobs.*, COUNT(images.id) AS image_count
+        FROM generation_jobs AS jobs
+        LEFT JOIN images ON images.job_id = jobs.id
+        WHERE jobs.user_id = ?
+        GROUP BY jobs.id
+        ORDER BY jobs.created_at DESC, jobs.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (user_id, meta["per_page"], (meta["page"] - 1) * meta["per_page"]),
+    ).fetchall()
+    return [job_row_to_dict(row) for row in rows], meta
 
 
 def load_job_images(job_id: int) -> list[dict]:

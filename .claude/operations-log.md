@@ -206,3 +206,15 @@
 - 工具：`rg`、`Get-Content`、`apply_patch`，仅做静态核对，未安装依赖、未运行项目。
 - 变更：`/my/credits` 复用通用分页参数，默认每页 10 条，可选 10/20/50/100；新增 `load_user_credit_records_page` 按用户分页读取积分流水。
 - 变更：`templates/my_credits.html` 桌面端保留表格，手机端切换为卡片列表；底部增加上一页、下一页、页码跳转和每页条数选择。
+
+## 2026-05-03 20:04（Codex）
+- 动作：核对“积分记录”分页器未显示的问题。
+- 工具：`rg`、`Get-Content`、`Get-ChildItem`，仅做静态核对，未安装依赖、未运行项目。
+- 结论：本地 `app.py` 已包含 `/my/credits` 分页路由和 `load_user_credit_records_page`，本地 `templates/my_credits.html` 已包含分页器、手机端卡片和桌面端表格。
+- 观察：项目内仅存在一份 `app.py` 和一份 `templates/my_credits.html`；若服务器页面仍显示旧版，大概率是服务器容器/进程未加载最新镜像或模板文件。
+
+## 2026-05-03 20:10（Codex）
+- 动作：为“我的生成任务”页面增加分页器并优化手机端展示。
+- 工具：`rg`、`Get-Content`、`apply_patch`，仅做静态核对，未安装依赖、未运行项目。
+- 变更：`/my/jobs` 复用通用分页参数，默认每页 5 条，可选 5/10/20/50；新增 `load_user_jobs_page` 按用户分页读取内置生成任务。
+- 变更：`templates/my_jobs.html` 增加任务分页器、页码跳转和每页条数选择；任务详情链接保留当前分页参数，导航和任务卡片适配手机端。
