@@ -711,8 +711,9 @@ def my_jobs():
 @app.route(route_path("/my/credits"))
 @login_required
 def my_credits():
-    records = load_user_credit_records(current_user_id(), limit=100)
-    return render_template("my_credits.html", records=records)
+    page, per_page = parse_page_params(10, (10, 20, 50, 100))
+    records, pagination = load_user_credit_records_page(current_user_id(), page, per_page)
+    return render_template("my_credits.html", records=records, pagination=pagination)
 
 
 @app.get(route_path("/api/my/jobs"))
@@ -2001,6 +2002,30 @@ def load_user_credit_records(user_id: int, limit: int = 100) -> list[dict]:
         record["amount_label"] = f"+{record['amount']}" if int(record["amount"]) > 0 else str(record["amount"])
         records.append(record)
     return records
+
+
+def load_user_credit_records_page(user_id: int, page: int, per_page: int) -> tuple[list[dict], dict]:
+    db = get_db()
+    total = int(db.execute("SELECT COUNT(*) FROM credit_ledger WHERE user_id = ?", (user_id,)).fetchone()[0])
+    meta = pagination_meta(total, page, per_page)
+    rows = db.execute(
+        """
+        SELECT ledger.*, jobs.n AS image_count, jobs.model AS job_model
+        FROM credit_ledger AS ledger
+        LEFT JOIN generation_jobs AS jobs ON jobs.id = ledger.job_id
+        WHERE ledger.user_id = ?
+        ORDER BY ledger.created_at DESC, ledger.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (user_id, meta["per_page"], (meta["page"] - 1) * meta["per_page"]),
+    ).fetchall()
+    records = []
+    for row in rows:
+        record = dict(row)
+        record["type_label"] = credit_record_type(record["reason"])
+        record["amount_label"] = f"+{record['amount']}" if int(record["amount"]) > 0 else str(record["amount"])
+        records.append(record)
+    return records, meta
 
 
 def user_active_jobs_count(db: sqlite3.Connection, user_id: int) -> int:

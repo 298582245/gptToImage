@@ -13,20 +13,42 @@
           <p class="text-sm text-stone-500">{{ current_user.username }} · 当前剩余 {{ current_user.credits }} 积分</p>
           <h1 class="mt-1 text-3xl font-semibold tracking-tight">积分记录</h1>
         </div>
-        <div class="flex flex-wrap gap-3 text-sm">
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('recharge') }}">充值积分</a>
+        <div class="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap sm:justify-end sm:gap-3">
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('recharge') }}">充值积分</a>
         </div>
       </header>
 
       <section class="mt-8 overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm">
-        <div class="flex items-center justify-between gap-3 border-b border-stone-100 p-5">
-          <h2 class="text-lg font-semibold">最近 100 条明细</h2>
-          <span class="text-xs text-stone-400">画图、润色、充值、退款都会记录</span>
+        <div class="flex flex-col gap-2 border-b border-stone-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <h2 class="text-lg font-semibold">积分明细</h2>
+          <span class="text-xs text-stone-400">共 {{ pagination.total }} 条 · 当前第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
         </div>
         {% if records %}
-        <div class="overflow-x-auto">
+        <div class="grid gap-3 p-4 md:hidden">
+          {% for record in records %}
+          <article class="rounded-[22px] border border-stone-100 bg-stone-50 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="rounded-full bg-white px-2.5 py-1 text-xs text-stone-600">{{ record.type_label }}</span>
+                <p class="mt-3 text-sm font-medium text-stone-900">{{ record.reason }}</p>
+              </div>
+              <span class="shrink-0 text-base font-semibold {% if record.amount > 0 %}text-emerald-600{% else %}text-red-600{% endif %}">{{ record.amount_label }}</span>
+            </div>
+            <div class="mt-3 grid gap-1 text-xs leading-5 text-stone-500">
+              <span>时间：{{ record.created_at }}</span>
+              <span>数量：{% if record.image_count %}{{ record.image_count }} 张{% else %}-{% endif %}</span>
+              <span>变动后余额：{{ record.balance_after }}</span>
+              {% if record.job_id %}
+              <span>任务 #{{ record.job_id }}{% if record.job_model %} · {{ record.job_model }}{% endif %}</span>
+              {% endif %}
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+
+        <div class="hidden overflow-x-auto md:block">
           <table class="min-w-full divide-y divide-stone-100 text-sm">
             <thead class="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
               <tr>
@@ -65,6 +87,26 @@
         <div class="p-10 text-center text-sm text-stone-500">暂无积分记录。</div>
         {% endif %}
       </section>
+
+      {% if records %}
+      <nav class="mt-8 flex flex-col gap-3 rounded-[24px] border border-stone-200 bg-white p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center justify-center gap-2">
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_credits', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+          <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_credits', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+        </div>
+        <form method="get" action="{{ url_for('my_credits') }}" class="flex flex-wrap items-center justify-center gap-2 text-sm">
+          <span class="text-stone-500">跳到</span>
+          <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+          <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400" onchange="this.form.page.value = 1; this.form.submit()">
+            {% for size in [10, 20, 50, 100] %}
+            <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+            {% endfor %}
+          </select>
+          <button class="rounded-2xl bg-stone-900 px-4 py-2 text-white" type="submit">确定</button>
+        </form>
+      </nav>
+      {% endif %}
     </main>
   </body>
 </html>
