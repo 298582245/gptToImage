@@ -1062,6 +1062,41 @@ def load_recent_images(limit: int = 20) -> list[dict]:
     return [image_row_to_dict(row) for row in rows]
 
 
+def load_admin_images_page(page: int, per_page: int, username_query: str = "") -> tuple[list[dict], dict]:
+    db = get_db()
+    username_query = username_query.strip()
+    where_clause = ""
+    params: list[str] = []
+    if username_query:
+        where_clause = "WHERE users.username LIKE ?"
+        params.append(f"%{username_query}%")
+
+    total = int(
+        db.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM images
+            LEFT JOIN users ON users.id = images.user_id
+            {where_clause}
+            """,
+            params,
+        ).fetchone()[0]
+    )
+    meta = pagination_meta(total, page, per_page)
+    rows = db.execute(
+        f"""
+        SELECT images.*, users.username, users.is_admin AS user_is_admin, users.is_disabled AS user_is_disabled
+        FROM images
+        LEFT JOIN users ON users.id = images.user_id
+        {where_clause}
+        ORDER BY images.created_at DESC, images.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (*params, meta["per_page"], (meta["page"] - 1) * meta["per_page"]),
+    ).fetchall()
+    return [image_row_to_dict(row) for row in rows], meta
+
+
 def load_admin_jobs(limit: int = 80) -> list[dict]:
     db = get_db()
     builtin_rows = db.execute(
@@ -1220,10 +1255,15 @@ def admin_jobs():
 @app.route(route_path("/admin/images"))
 @admin_required
 def admin_images():
+    page, per_page = parse_page_params(12, (6, 12, 24, 48))
+    username_query = request.args.get("username", "").strip()
+    recent_images, pagination = load_admin_images_page(page, per_page, username_query)
     return render_template(
         "admin_images.html",
         active_admin_page="images",
-        recent_images=load_recent_images(limit=200),
+        recent_images=recent_images,
+        pagination=pagination,
+        username_query=username_query,
     )
 
 
@@ -1260,7 +1300,14 @@ def admin_image_hide(image_id: int):
     except Exception as exc:  # noqa: BLE001
         get_db().rollback()
         flash(f"隐藏图片失败：{exc}")
-    return redirect(url_for("admin_images"))
+    return redirect(
+        url_for(
+            "admin_images",
+            page=request.args.get("page", 1),
+            per_page=request.args.get("per_page", 12),
+            username=request.args.get("username", "").strip(),
+        )
+    )
 
 
 @app.post(route_path("/admin/images/<int:image_id>/restore"))
@@ -1290,7 +1337,14 @@ def admin_image_restore(image_id: int):
     except Exception as exc:  # noqa: BLE001
         get_db().rollback()
         flash(f"恢复图片失败：{exc}")
-    return redirect(url_for("admin_images"))
+    return redirect(
+        url_for(
+            "admin_images",
+            page=request.args.get("page", 1),
+            per_page=request.args.get("per_page", 12),
+            username=request.args.get("username", "").strip(),
+        )
+    )
 
 
 @app.route(route_path("/admin/redeem-codes"))

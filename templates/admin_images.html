@@ -10,8 +10,18 @@
       <h3 class="text-lg font-semibold">全部图片</h3>
       <p class="mt-1 text-sm text-stone-500">管理员可查看、隐藏违规图片；隐藏后仅管理员可访问，可选同时封禁所属账号。</p>
     </div>
-    <span class="text-xs text-stone-400">最多显示 {{ recent_images|length }} 条</span>
+    <span class="text-xs text-stone-400">共 {{ pagination.total }} 张 · 当前第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
   </div>
+
+  <form method="get" action="{{ url_for('admin_images') }}" class="mt-5 grid gap-3 rounded-[22px] border border-stone-100 bg-stone-50 p-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+    <label class="block">
+      <span class="mb-2 block text-xs font-medium text-stone-500">按用户名搜索</span>
+      <input type="text" name="username" value="{{ username_query }}" placeholder="输入用户名，支持模糊搜索" class="w-full rounded-2xl border border-stone-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-stone-400">
+    </label>
+    <input type="hidden" name="per_page" value="{{ pagination.per_page }}">
+    <button class="rounded-2xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white" type="submit">搜索</button>
+    <a class="inline-flex items-center justify-center rounded-2xl border border-stone-200 bg-white px-5 py-2.5 text-sm text-stone-700" href="{{ url_for('admin_images', per_page=pagination.per_page) }}">重置</a>
+  </form>
 
   <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
     {% for image in recent_images %}
@@ -33,12 +43,12 @@
         <p class="line-clamp-3 text-sm leading-6 text-stone-600">{{ image.prompt }}</p>
         <div class="flex flex-col gap-2 border-t border-stone-200 pt-3">
           {% if image.visibility == 'hidden' %}
-          <form method="post" action="{{ url_for('admin_image_restore', image_id=image.id) }}" onsubmit="return confirm('确认恢复这张图片显示吗？');">
+          <form method="post" action="{{ url_for('admin_image_restore', image_id=image.id, page=pagination.page, per_page=pagination.per_page, username=username_query) }}" onsubmit="return confirm('确认恢复这张图片显示吗？');">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="w-full rounded-2xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-700">恢复显示</button>
           </form>
           {% else %}
-          <form method="post" action="{{ url_for('admin_image_hide', image_id=image.id) }}" class="space-y-2" onsubmit="return confirm('确认隐藏这张图片吗？隐藏后仅管理员可查看。');">
+          <form method="post" action="{{ url_for('admin_image_hide', image_id=image.id, page=pagination.page, per_page=pagination.per_page, username=username_query) }}" class="space-y-2" onsubmit="return confirm('确认隐藏这张图片吗？隐藏后仅管理员可查看。');">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             {% if image.user_id and not image.user_is_admin and not image.user_is_disabled %}
             <label class="flex items-center gap-2 rounded-2xl bg-white px-3 py-2 text-xs text-stone-600">
@@ -56,5 +66,26 @@
     <p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500 sm:col-span-2 xl:col-span-3">暂无图片。</p>
     {% endfor %}
   </div>
+
+  {% if recent_images %}
+  <nav class="mt-8 flex flex-col gap-3 rounded-[24px] border border-stone-100 bg-stone-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center justify-center gap-2">
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_images', page=pagination.page - 1, per_page=pagination.per_page, username=username_query) }}">上一页</a>
+      <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+      <a class="rounded-full bg-white px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('admin_images', page=pagination.page + 1, per_page=pagination.per_page, username=username_query) }}">下一页</a>
+    </div>
+    <form method="get" action="{{ url_for('admin_images') }}" class="flex flex-wrap items-center justify-center gap-2 text-sm">
+      <input type="hidden" name="username" value="{{ username_query }}">
+      <span class="text-stone-500">跳到</span>
+      <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+      <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400" onchange="this.form.page.value = 1; this.form.submit()">
+        {% for size in [6, 12, 24, 48] %}
+        <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+        {% endfor %}
+      </select>
+      <button class="rounded-2xl bg-stone-900 px-4 py-2 text-white" type="submit">确定</button>
+    </form>
+  </nav>
+  {% endif %}
 </section>
 {% endblock %}
