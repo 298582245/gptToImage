@@ -300,6 +300,7 @@ def init_database() -> None:
                 style TEXT NOT NULL DEFAULT '',
                 n INTEGER NOT NULL DEFAULT 1,
                 cost INTEGER NOT NULL DEFAULT 0,
+                publish_to_gallery INTEGER NOT NULL DEFAULT 0,
                 error_message TEXT NOT NULL DEFAULT '',
                 attempts INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -397,6 +398,7 @@ def init_database() -> None:
         ensure_column(db, "provider_configs", "polish_model", "TEXT NOT NULL DEFAULT ''")
         ensure_column(db, "provider_configs", "polish_enabled", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "provider_configs", "polish_price", "INTEGER NOT NULL DEFAULT 0")
+        ensure_column(db, "generation_jobs", "publish_to_gallery", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "redeem_codes", "batch_id", "TEXT NOT NULL DEFAULT ''")
         db.execute("CREATE INDEX IF NOT EXISTS idx_images_access_token ON images (access_token)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch ON redeem_codes (batch_id)")
@@ -1233,10 +1235,20 @@ def admin_image_restore(image_id: int):
         abort(400)
     try:
         db = get_db()
-        image = db.execute("SELECT id, source FROM images WHERE id = ?", (image_id,)).fetchone()
+        image = db.execute(
+            """
+            SELECT images.id, images.source, generation_jobs.publish_to_gallery
+            FROM images
+            LEFT JOIN generation_jobs ON generation_jobs.id = images.job_id
+            WHERE images.id = ?
+            """,
+            (image_id,),
+        ).fetchone()
         if not image:
             raise ValueError("图片不存在。")
-        restored_visibility = "private" if image["source"] == "builtin" else "public"
+        restored_visibility = "private"
+        if image["source"] != "builtin" or image["publish_to_gallery"]:
+            restored_visibility = "public"
         db.execute("UPDATE images SET visibility = ? WHERE id = ?", (restored_visibility, image_id))
         db.commit()
         flash("图片已恢复显示。")
@@ -1979,8 +1991,8 @@ def create_builtin_job(form_values: dict) -> int:
             """
             INSERT INTO generation_jobs (
                 user_id, status, prompt, effective_prompt, prompt_polished, model,
-                size, quality, background, output_format, style, n, cost, created_at
-            ) VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                size, quality, background, output_format, style, n, cost, publish_to_gallery, created_at
+            ) VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -1995,6 +2007,7 @@ def create_builtin_job(form_values: dict) -> int:
                 form_values["style"],
                 requested_n,
                 cost,
+                1 if form_values.get("publish_to_gallery") else 0,
                 now_text(),
             ),
         )
@@ -2231,6 +2244,8 @@ def complete_job(db: sqlite3.Connection, job: dict, image_entries: list[dict]) -
             return
 
         for entry in image_entries:
+            entry["visibility"] = "public"
+            entry["source"] = "custom"
             create_image_record(entry, commit=False, db=db)
         db.execute(
             "UPDATE generation_jobs SET status = 'completed', completed_at = ? WHERE id = ?",
@@ -2356,6 +2371,7 @@ def process_custom_generation_job(job: dict) -> None:
         request_payload = build_job_image_params(job)
         response = client.images.generate(**request_payload)
         output_format = request_payload.get("output_format", "png")
+        visibility = "public" if job.get("publish_to_gallery") else "private"
         image_entries = []
         for item in response.data:
             image_bytes, detected_format = decode_image_payload(item, output_format)
@@ -2408,7 +2424,7 @@ def process_generation_job(job: dict) -> None:
                     "filename": filename,
                     "user_id": job["user_id"],
                     "job_id": job["id"],
-                    "visibility": "private",
+                    "visibility": visibility,
                     "source": "builtin",
                     "revised_prompt": getattr(item, "revised_prompt", None),
                     "prompt": job["prompt"],
@@ -2501,6 +2517,7 @@ def index():
         "polish_prompt": DEFAULTS["polish_prompt"],
         "polish_category": "auto",
         "generation_mode": "custom",
+        "publish_to_gallery": False,
         "confirmed_effective_prompt": "",
         "confirmed_prompt_source": "",
     }
@@ -2518,7 +2535,7 @@ def index():
         polish_action = request.form.get("polish_action", "confirm")
 
         for key in form_values:
-            if key == "polish_prompt":
+            if key in {"polish_prompt", "publish_to_gallery"}:
                 form_values[key] = to_bool(request.form.get(key, ""))
                 continue
             if key == "polish_category":
