@@ -659,8 +659,35 @@ def logout():
 @app.route(route_path("/my/images"))
 @login_required
 def my_images():
-    images = load_user_images(current_user_id())
-    return render_template("my_images.html", images=images)
+    page, per_page = parse_page_params(12, (6, 12, 24, 48))
+    images, pagination = load_user_images_page(current_user_id(), page, per_page)
+    return render_template("my_images.html", images=images, pagination=pagination)
+
+
+@app.post(route_path("/my/images/<int:image_id>/visibility"))
+@login_required
+def update_my_image_visibility(image_id: int):
+    if not validate_csrf_token():
+        abort(400)
+    visibility = request.form.get("visibility", "").strip()
+    if visibility not in {"public", "private"}:
+        abort(400)
+
+    db = get_db()
+    image = db.execute(
+        "SELECT id, user_id, visibility FROM images WHERE id = ?",
+        (image_id,),
+    ).fetchone()
+    if not image or int(image["user_id"] or 0) != int(current_user_id()):
+        abort(404)
+    if image["visibility"] == "hidden":
+        flash("这张图片已被管理员隐藏，不能自行修改可见性。")
+        return redirect(url_for("my_images"))
+
+    db.execute("UPDATE images SET visibility = ? WHERE id = ?", (visibility, image_id))
+    db.commit()
+    flash("图片可见性已更新。")
+    return redirect(url_for("my_images", page=request.args.get("page", 1), per_page=request.args.get("per_page", 12)))
 
 
 @app.route(route_path("/my/jobs"))
@@ -1826,6 +1853,29 @@ def load_user_images(user_id: int, limit: int = 120) -> list[dict]:
         (user_id, limit),
     ).fetchall()
     return [image_row_to_dict(row) for row in rows]
+
+
+def load_user_images_page(user_id: int, page: int, per_page: int) -> tuple[list[dict], dict]:
+    db = get_db()
+    total = int(
+        db.execute(
+            "SELECT COUNT(*) FROM images WHERE user_id = ? AND visibility != 'hidden'",
+            (user_id,),
+        ).fetchone()[0]
+    )
+    meta = pagination_meta(total, page, per_page)
+    rows = db.execute(
+        """
+        SELECT images.*, users.username
+        FROM images
+        LEFT JOIN users ON users.id = images.user_id
+        WHERE images.user_id = ? AND images.visibility != 'hidden'
+        ORDER BY images.created_at DESC, images.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (user_id, meta["per_page"], (meta["page"] - 1) * meta["per_page"]),
+    ).fetchall()
+    return [image_row_to_dict(row) for row in rows], meta
 
 
 def get_provider_config(include_secret: bool = False, db: sqlite3.Connection | None = None) -> dict:

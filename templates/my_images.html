@@ -13,17 +13,21 @@
           <p class="text-sm text-stone-500">{{ current_user.username }}</p>
           <h1 class="mt-1 text-3xl font-semibold tracking-tight">我的生成记录</h1>
         </div>
-        <div class="flex flex-wrap gap-3 text-sm">
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_credits') }}">积分记录</a>
+        <div class="grid grid-cols-2 gap-2 text-sm sm:flex sm:flex-wrap sm:justify-end sm:gap-3">
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('index') }}">返回工作台</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_jobs') }}">我的任务</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('my_credits') }}">积分记录</a>
           {% if current_user.is_admin %}
-          <a class="rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('admin_dashboard') }}">管理员后台</a>
+          <a class="inline-flex items-center justify-center rounded-full border border-stone-200 bg-white px-4 py-2 text-stone-700 hover:text-stone-950" href="{{ url_for('admin_dashboard') }}">管理员后台</a>
           {% endif %}
         </div>
       </header>
 
       {% if images %}
+      <div class="mt-6 rounded-[24px] border border-stone-200 bg-white p-4 text-sm text-stone-500">
+        <span>共 {{ pagination.total }} 张图片 · 当前第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+      </div>
+
       <section class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {% for image in images %}
         <article class="overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm">
@@ -32,7 +36,7 @@
           </a>
           <div class="space-y-3 p-4">
             <div class="flex items-center justify-between gap-3 text-xs text-stone-400">
-              <span class="rounded-full bg-stone-100 px-2.5 py-1 text-stone-600">{{ image.visibility }}</span>
+              <span class="rounded-full bg-stone-100 px-2.5 py-1 text-stone-600">{{ image.visibility_label }}</span>
               <span>{{ image.created_at }}</span>
             </div>
             <h2 class="truncate text-sm font-medium text-stone-900">{{ image.model }}</h2>
@@ -43,11 +47,40 @@
               <p class="mt-1 line-clamp-4 text-sm leading-6 text-stone-700">{{ image.effective_prompt }}</p>
             </div>
             {% endif %}
-            <a class="text-xs font-medium text-stone-900" href="{{ image.url }}" target="_blank" rel="noopener noreferrer">查看原图</a>
+            <div class="flex flex-col gap-3 border-t border-stone-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+              <a class="text-xs font-medium text-stone-900" href="{{ image.url }}" target="_blank" rel="noopener noreferrer">查看原图</a>
+              {% if image.visibility != 'hidden' %}
+              <form method="post" action="{{ url_for('update_my_image_visibility', image_id=image.id, page=pagination.page, per_page=pagination.per_page) }}" class="flex rounded-full border border-stone-200 bg-stone-50 p-1 text-xs">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" name="visibility" value="private" class="rounded-full px-3 py-1.5 {% if image.visibility == 'private' %}bg-stone-900 text-white{% else %}text-stone-500 hover:text-stone-900{% endif %}">私有</button>
+                <button type="submit" name="visibility" value="public" class="rounded-full px-3 py-1.5 {% if image.visibility == 'public' %}bg-stone-900 text-white{% else %}text-stone-500 hover:text-stone-900{% endif %}">公开</button>
+              </form>
+              {% else %}
+              <span class="rounded-full bg-red-50 px-3 py-1.5 text-xs text-red-600">管理员已隐藏</span>
+              {% endif %}
+            </div>
           </div>
         </article>
         {% endfor %}
       </section>
+
+      <nav class="mt-8 flex flex-col gap-3 rounded-[24px] border border-stone-200 bg-white p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center justify-center gap-2">
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_prev %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_images', page=pagination.page - 1, per_page=pagination.per_page) }}">上一页</a>
+          <span class="px-2 text-stone-500">第 {{ pagination.page }} / {{ pagination.total_pages }} 页</span>
+          <a class="rounded-full bg-stone-50 px-3 py-2 text-stone-700 {% if not pagination.has_next %}pointer-events-none opacity-40{% endif %}" href="{{ url_for('my_images', page=pagination.page + 1, per_page=pagination.per_page) }}">下一页</a>
+        </div>
+        <form method="get" action="{{ url_for('my_images') }}" class="flex flex-wrap items-center justify-center gap-2 text-sm">
+          <span class="text-stone-500">跳到</span>
+          <input type="number" min="1" max="{{ pagination.total_pages }}" name="page" value="{{ pagination.page }}" class="w-20 rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400">
+          <select name="per_page" class="rounded-2xl border border-stone-200 bg-white px-3 py-2 outline-none focus:border-stone-400" onchange="this.form.page.value = 1; this.form.submit()">
+            {% for size in [6, 12, 24, 48] %}
+            <option value="{{ size }}" {% if pagination.per_page == size %}selected{% endif %}>{{ size }} 条/页</option>
+            {% endfor %}
+          </select>
+          <button class="rounded-2xl bg-stone-900 px-4 py-2 text-white" type="submit">确定</button>
+        </form>
+      </nav>
       {% else %}
       <section class="mt-8 rounded-[28px] border border-dashed border-stone-300 bg-white p-10 text-center">
         <h2 class="text-xl font-semibold">还没有生成记录</h2>
@@ -56,5 +89,7 @@
       </section>
       {% endif %}
     </main>
+
+    {% include "_modal_messages.html" %}
   </body>
 </html>
