@@ -1,4 +1,4 @@
-﻿# 操作日志
+# 操作日志
 
 - 时间: 2026-05-01 21:16 (UTC+8)
 - 执行者: Codex
@@ -234,3 +234,11 @@
 - 变更：内置 worker 在生成前明确计算 `visibility = public/private`；OpenAI 客户端增加 180 秒超时，避免单个请求无限卡住 worker。
 - 变更：新增 `reset_stale_running_jobs` 与 `recover_interrupted_running_jobs`，启动 worker 时恢复中断的 running 任务，领取任务时回收超时 running 任务，并记录队列领取异常日志。
 - 追加核对：worker 主循环已对单个内置/自定义任务处理异常做日志保护，避免任务处理异常导致后台线程静默退出。
+
+## 2026-05-04 23:56（Codex）
+- 动作：按功能拆分过大的 `app.py`，降低单文件维护压力。
+- 工具：`rg`、`Get-Content`、PowerShell 文本迁移脚本，`apply_patch` 追加本段日志时触发 Windows sandbox 中文参数边界错误，改用 UTF-8 文本追加；仅做静态核对，未安装依赖、未运行项目。
+- 变更：新增 `image_studio/routes/`，将登录注册、用户中心、后台管理、首页/API/图片访问路由拆入独立路由模块。
+- 变更：新增 `image_studio/generation_worker.py`，将内置/自定义生图队列 worker、任务领取、完成、退款与超时恢复逻辑拆出。
+- 变更：新增 `image_studio/services/`，按分页、接口配置、提示词润色、图片、积分、卡密、任务、后台查询拆分业务服务函数。
+- 静态核对：`app.py` 已压缩到约 637 行且不再直接声明 `@app.route/@app.get/@app.post` 路由；路由 endpoint 与 worker 入口仅保留一份。
