@@ -176,8 +176,11 @@ INSPIRER_CATEGORIES = [
 INSPIRER_CATEGORY_BY_VALUE = {category["value"]: category for category in INSPIRER_CATEGORIES}
 
 WORKER_POLL_SECONDS = 2
+WORKER_STALE_RUNNING_SECONDS = 30 * 60
+OPENAI_CLIENT_TIMEOUT_SECONDS = 180
 WORKER_LOCK = threading.Lock()
 WORKER_STARTED = False
+WORKER_THREAD = None
 
 def load_secret_key() -> str:
     if SECRET_KEY_FILE.exists():
@@ -1540,7 +1543,7 @@ def normalize_base_url(base_url: str) -> str:
 
 
 def build_client(api_key: str, base_url: str) -> OpenAI:
-    kwargs = {"api_key": api_key.strip()}
+    kwargs = {"api_key": api_key.strip(), "timeout": OPENAI_CLIENT_TIMEOUT_SECONDS}
     if base_url.strip():
         kwargs["base_url"] = normalize_base_url(base_url)
     return OpenAI(**kwargs)
@@ -2341,11 +2344,58 @@ def running_jobs_count(db: sqlite3.Connection) -> int:
     return builtin_running + custom_running
 
 
+def reset_stale_running_jobs(db: sqlite3.Connection) -> None:
+    stale_before = datetime.fromtimestamp(time.time() - WORKER_STALE_RUNNING_SECONDS).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        """
+        UPDATE generation_jobs
+        SET status = 'pending', started_at = NULL, error_message = ''
+        WHERE status = 'running' AND COALESCE(started_at, created_at) < ?
+        """,
+        (stale_before,),
+    )
+    db.execute(
+        """
+        UPDATE custom_generation_jobs
+        SET status = 'pending', started_at = NULL, error_message = ''
+        WHERE status = 'running' AND COALESCE(started_at, created_at) < ?
+        """,
+        (stale_before,),
+    )
+
+
+def recover_interrupted_running_jobs() -> None:
+    db = open_worker_db()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        db.execute(
+            """
+            UPDATE generation_jobs
+            SET status = 'pending', started_at = NULL, error_message = ''
+            WHERE status = 'running'
+            """
+        )
+        db.execute(
+            """
+            UPDATE custom_generation_jobs
+            SET status = 'pending', started_at = NULL, error_message = ''
+            WHERE status = 'running'
+            """
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        app.logger.exception("恢复中断的生成任务失败")
+    finally:
+        db.close()
+
+
 def claim_next_job(db: sqlite3.Connection) -> dict | None:
     config = get_provider_config(include_secret=True, db=db)
     max_running = max(1, int(config.get("max_concurrent_jobs", 1) or 1))
     db.execute("BEGIN IMMEDIATE")
     try:
+        reset_stale_running_jobs(db)
         if running_jobs_count(db) >= max_running:
             db.rollback()
             return None
@@ -2399,8 +2449,6 @@ def complete_job(db: sqlite3.Connection, job: dict, image_entries: list[dict]) -
             return
 
         for entry in image_entries:
-            entry["visibility"] = "public"
-            entry["source"] = "custom"
             create_image_record(entry, commit=False, db=db)
         db.execute(
             "UPDATE generation_jobs SET status = 'completed', completed_at = ? WHERE id = ?",
@@ -2417,6 +2465,7 @@ def claim_next_custom_job(db: sqlite3.Connection) -> dict | None:
     max_running = max(1, int(config.get("max_concurrent_jobs", 1) or 1))
     db.execute("BEGIN IMMEDIATE")
     try:
+        reset_stale_running_jobs(db)
         if running_jobs_count(db) >= max_running:
             db.rollback()
             return None
@@ -2473,6 +2522,8 @@ def complete_custom_job(db: sqlite3.Connection, job: dict, image_entries: list[d
             return
 
         for entry in image_entries:
+            entry["visibility"] = "public"
+            entry["source"] = "custom"
             create_image_record(entry, commit=False, db=db)
         db.execute(
             """
@@ -2526,7 +2577,6 @@ def process_custom_generation_job(job: dict) -> None:
         request_payload = build_job_image_params(job)
         response = client.images.generate(**request_payload)
         output_format = request_payload.get("output_format", "png")
-        visibility = "public" if job.get("publish_to_gallery") else "private"
         image_entries = []
         for item in response.data:
             image_bytes, detected_format = decode_image_payload(item, output_format)
@@ -2570,6 +2620,7 @@ def process_generation_job(job: dict) -> None:
         request_payload = build_job_image_params(job)
         response = client.images.generate(**request_payload)
         output_format = request_payload.get("output_format", "png")
+        visibility = "public" if job.get("publish_to_gallery") else "private"
         image_entries = []
         for item in response.data:
             image_bytes, detected_format = decode_image_payload(item, output_format)
@@ -2617,27 +2668,36 @@ def generation_worker_loop() -> None:
                 job = claim_next_job(db)
                 custom_job = None if job else claim_next_custom_job(db)
             except Exception:
+                app.logger.exception("生成队列领取任务失败")
                 job = None
                 custom_job = None
             finally:
                 db.close()
 
             if job:
-                process_generation_job(job)
+                try:
+                    process_generation_job(job)
+                except Exception:
+                    app.logger.exception("处理内置生成任务失败")
                 continue
             if custom_job:
-                process_custom_generation_job(custom_job)
+                try:
+                    process_custom_generation_job(custom_job)
+                except Exception:
+                    app.logger.exception("处理自定义生成任务失败")
                 continue
             time.sleep(WORKER_POLL_SECONDS)
 
 
 def start_generation_worker() -> None:
-    global WORKER_STARTED
+    global WORKER_STARTED, WORKER_THREAD
     with WORKER_LOCK:
-        if WORKER_STARTED:
+        if WORKER_STARTED and WORKER_THREAD and WORKER_THREAD.is_alive():
             return
+        recover_interrupted_running_jobs()
         thread = threading.Thread(target=generation_worker_loop, name="generation-worker", daemon=True)
         thread.start()
+        WORKER_THREAD = thread
         WORKER_STARTED = True
 
 

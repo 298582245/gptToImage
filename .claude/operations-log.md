@@ -225,3 +225,12 @@
 - 变更：新增 `load_admin_images_page`，支持按用户名模糊搜索图片，默认每页 12 张，可选 6/12/24/48。
 - 变更：`/admin/images` 传入 `pagination` 与 `username_query`；隐藏/恢复图片后保留当前页、每页条数和用户名筛选条件。
 - 变更：`templates/admin_images.html` 增加搜索栏、分页器、页码跳转和每页条数选择，并保持现有后台卡片式审核布局。
+
+## 2026-05-04 22:49（Codex）
+- 动作：修复自定义接口和内置接口生图任务长期停留“待生成”的队列 bug。
+- 工具：`rg`、`Get-Content`、`Select-String`、`apply_patch`，仅做静态核对，未安装依赖、未运行项目。
+- 根因：内置任务完成函数被误加了自定义图片强制 `public/custom` 的兜底，内置 worker 又引用了未定义的 `visibility`，可能导致任务异常；旧 `running` 任务还会占住并发名额，使后续任务一直保持 `pending`。
+- 变更：恢复 `complete_job` 只按 worker 传入的内置图片属性入库；将自定义图片强制 `public/custom` 兜底放回 `complete_custom_job`。
+- 变更：内置 worker 在生成前明确计算 `visibility = public/private`；OpenAI 客户端增加 180 秒超时，避免单个请求无限卡住 worker。
+- 变更：新增 `reset_stale_running_jobs` 与 `recover_interrupted_running_jobs`，启动 worker 时恢复中断的 running 任务，领取任务时回收超时 running 任务，并记录队列领取异常日志。
+- 追加核对：worker 主循环已对单个内置/自定义任务处理异常做日志保护，避免任务处理异常导致后台线程静默退出。
