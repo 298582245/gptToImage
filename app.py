@@ -80,6 +80,7 @@ JOB_STATUS_LABELS = {
     "pending": "待生成",
     "running": "生成中",
     "completed": "已完成",
+    "needs_review": "待核对",
     "failed": "失败",
     "cancelled": "已取消",
 }
@@ -179,8 +180,8 @@ INSPIRER_CATEGORIES = [
 INSPIRER_CATEGORY_BY_VALUE = {category["value"]: category for category in INSPIRER_CATEGORIES}
 
 WORKER_POLL_SECONDS = 2
-WORKER_STALE_RUNNING_SECONDS = 30 * 60
-OPENAI_CLIENT_TIMEOUT_SECONDS = 180
+WORKER_STALE_RUNNING_SECONDS = int(os.getenv("WORKER_STALE_RUNNING_SECONDS", str(30 * 60)))
+OPENAI_CLIENT_TIMEOUT_SECONDS = int(os.getenv("OPENAI_CLIENT_TIMEOUT_SECONDS", "600"))
 WORKER_LOCK = threading.Lock()
 WORKER_STARTED = False
 WORKER_THREAD = None

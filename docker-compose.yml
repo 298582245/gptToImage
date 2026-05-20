@@ -8,6 +8,8 @@ services:
     environment:
       BASE_PATH: /image-studio
       OPENAI_BASE_URL: https://ai.wqwlkj.cn
+      OPENAI_CLIENT_TIMEOUT_SECONDS: 600
+      WORKER_STALE_RUNNING_SECONDS: 1800
     volumes:
       - ./generated:/app/generated
       - ./data:/app/data

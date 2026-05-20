@@ -87,6 +87,26 @@ def claim_next_job(db: sqlite3.Connection) -> dict | None:
         raise
 
 
+def provider_may_have_completed(error_message: str) -> bool:
+    lowered = error_message.lower()
+    return "504" in lowered or "gateway time-out" in lowered or "gateway timeout" in lowered or "openresty" in lowered
+
+
+def mark_job_needs_review(db: sqlite3.Connection, job: dict, error_message: str) -> None:
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        current = db.execute("SELECT status FROM generation_jobs WHERE id = ?", (job["id"],)).fetchone()
+        if current and current["status"] == "running":
+            db.execute(
+                "UPDATE generation_jobs SET status = 'needs_review', error_message = ?, completed_at = ? WHERE id = ?",
+                (error_message[:500], now_text(), job["id"]),
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
 def refund_job(db: sqlite3.Connection, job: dict, error_message: str) -> None:
     db.execute("BEGIN IMMEDIATE")
     try:
@@ -224,6 +244,10 @@ def build_job_image_params(job: dict) -> dict:
     )
 
 
+def job_idempotency_headers(job: dict, prefix: str) -> dict:
+    return {"Idempotency-Key": f"{prefix}-{job['id']}"}
+
+
 def process_custom_generation_job(job: dict) -> None:
     if not has_app_context():
         with app.app_context():
@@ -238,7 +262,10 @@ def process_custom_generation_job(job: dict) -> None:
 
         client = build_client(api_key, job["base_url"], max_retries=0)
         request_payload = build_job_image_params(job)
-        response = client.images.generate(**request_payload)
+        response = client.images.generate(
+            **request_payload,
+            extra_headers=job_idempotency_headers(job, "custom-image-job"),
+        )
         output_format = request_payload.get("output_format", "png")
         image_entries = []
         for item in response.data:
@@ -281,7 +308,10 @@ def process_generation_job(job: dict) -> None:
 
         client = build_client(config["api_key"], config["base_url"], max_retries=0)
         request_payload = build_job_image_params(job)
-        response = client.images.generate(**request_payload)
+        response = client.images.generate(
+            **request_payload,
+            extra_headers=job_idempotency_headers(job, "builtin-image-job"),
+        )
         output_format = request_payload.get("output_format", "png")
         visibility = "public" if job.get("publish_to_gallery") else "private"
         image_entries = []
@@ -308,7 +338,10 @@ def process_generation_job(job: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         error_message = str(exc)
         try:
-            refund_job(db, job, error_message)
+            if provider_may_have_completed(error_message):
+                mark_job_needs_review(db, job, error_message)
+            else:
+                refund_job(db, job, error_message)
         except Exception as refund_exc:  # noqa: BLE001
             try:
                 db.rollback()
