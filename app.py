@@ -352,6 +352,12 @@ def init_database() -> None:
                 FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE SET NULL
             );
 
+            CREATE TABLE IF NOT EXISTS form_submit_tokens (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS redeem_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT NOT NULL UNIQUE,
@@ -390,6 +396,8 @@ def init_database() -> None:
                 ON custom_generation_jobs (access_token);
             CREATE INDEX IF NOT EXISTS idx_ledger_user_created
                 ON credit_ledger (user_id, created_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_submit_tokens_created
+                ON form_submit_tokens (created_at);
             CREATE INDEX IF NOT EXISTS idx_redeem_codes_created
                 ON redeem_codes (created_at DESC, id DESC);
             CREATE INDEX IF NOT EXISTS idx_redeem_uses_code_user
@@ -407,6 +415,7 @@ def init_database() -> None:
         ensure_column(db, "generation_jobs", "publish_to_gallery", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "redeem_codes", "batch_id", "TEXT NOT NULL DEFAULT ''")
         db.execute("CREATE INDEX IF NOT EXISTS idx_images_access_token ON images (access_token)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_submit_tokens_created ON form_submit_tokens (created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch ON redeem_codes (batch_id)")
         db.execute(
             """
@@ -547,6 +556,46 @@ def validate_csrf_token() -> bool:
     return bool(expected and submitted and secrets.compare_digest(expected, submitted))
 
 
+def get_submit_token() -> str:
+    token = session.get("_submit_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_submit_token"] = token
+    return token
+
+
+def rotate_submit_token() -> str:
+    token = secrets.token_urlsafe(32)
+    session["_submit_token"] = token
+    return token
+
+
+def validate_submit_token() -> bool:
+    expected = session.get("_submit_token", "")
+    submitted = request.form.get("_submit_token", "")
+    if not expected or not submitted or not secrets.compare_digest(expected, submitted):
+        return False
+    rotate_submit_token()
+    return True
+
+
+def claim_submit_token() -> bool:
+    if not validate_submit_token():
+        return False
+    submitted = request.form.get("_submit_token", "")
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO form_submit_tokens (token, user_id, created_at) VALUES (?, ?, ?)",
+            (submitted, current_user_id(), now_text()),
+        )
+        db.commit()
+        return True
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return False
+
+
 def login_required(view):
     @wraps(view)
     def wrapped_view(*args, **kwargs):
@@ -587,6 +636,7 @@ def inject_template_globals() -> dict:
     return {
         "current_user": g.get("current_user"),
         "csrf_token": get_csrf_token,
+        "submit_token": get_submit_token,
     }
 
 def normalize_username(username: str) -> str:

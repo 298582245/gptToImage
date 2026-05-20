@@ -10,8 +10,10 @@ def normalize_base_url(base_url: str) -> str:
     return f"{value}/v1"
 
 
-def build_client(api_key: str, base_url: str) -> OpenAI:
+def build_client(api_key: str, base_url: str, max_retries: int | None = None) -> OpenAI:
     kwargs = {"api_key": api_key.strip(), "timeout": OPENAI_CLIENT_TIMEOUT_SECONDS}
+    if max_retries is not None:
+        kwargs["max_retries"] = max_retries
     if base_url.strip():
         kwargs["base_url"] = normalize_base_url(base_url)
     return OpenAI(**kwargs)

@@ -119,7 +119,7 @@ def polish_prompt_with_ai(prompt: str, category_value: str = "auto") -> str:
     if not config.get("polish_enabled") or not config.get("polish_api_key") or not config.get("polish_base_url") or not config.get("polish_model"):
         raise ValueError("管理员暂未配置可用的 AI 润色接口。")
 
-    client = build_client(config["polish_api_key"], config["polish_base_url"])
+    client = build_client(config["polish_api_key"], config["polish_base_url"], max_retries=0)
     system_prompt = (
         "你是专业图像生成提示词优化器。请把用户中文需求改写成最终可直接发送给生图模型的中文提示词。"
         "只输出润色后的提示词，不要解释、不要标题、不要 Markdown。保持主体和核心意图不变，补充构图、主体细节、环境、镜头、光线、色彩、材质、景深和画质要求。"

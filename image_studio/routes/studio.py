@@ -34,6 +34,9 @@ def index():
     if request.method == "POST":
         if not validate_csrf_token():
             abort(400)
+        if not claim_submit_token():
+            flash("请勿重复提交，页面已刷新后可重新生成。")
+            return redirect(url_for("index"))
         polish_action = request.form.get("polish_action", "confirm")
 
         for key in form_values:

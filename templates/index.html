@@ -130,6 +130,7 @@
 
             <form method="post" id="generate-form" class="mt-8 rounded-[32px] border border-stone-200 bg-white p-4 shadow-float sm:p-5">
               <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="_submit_token" value="{{ submit_token() }}">
               <div class="rounded-[28px] border border-stone-200 bg-stone-50/70 p-3 sm:p-4">
                 <div class="flex items-start gap-3">
                   <div class="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-stone-600 shadow-soft">
@@ -798,7 +799,29 @@
           loadModels(true);
         }
 
-        form.addEventListener("submit", () => {
+        let submitting = false;
+        form.addEventListener("submit", (event) => {
+          if (submitting) {
+            event.preventDefault();
+            return;
+          }
+          submitting = true;
+          const submitter = event.submitter;
+          if (submitter?.name) {
+            let submitterValue = form.querySelector(`input[type='hidden'][data-submitter='${submitter.name}']`);
+            if (!submitterValue) {
+              submitterValue = document.createElement("input");
+              submitterValue.type = "hidden";
+              submitterValue.name = submitter.name;
+              submitterValue.dataset.submitter = submitter.name;
+              form.appendChild(submitterValue);
+            }
+            submitterValue.value = submitter.value;
+          }
+          form.querySelectorAll("button[type='submit']").forEach((button) => {
+            button.disabled = true;
+            button.classList.add("opacity-60", "cursor-not-allowed");
+          });
           rememberPendingApiCredentials();
           overlay.classList.add("is-visible");
           overlay.setAttribute("aria-hidden", "false");
@@ -821,7 +844,14 @@
             progressValue.textContent = `${Math.min(progress, 92)}%`;
           }, 700);
 
-          window.addEventListener("pageshow", () => window.clearInterval(timer), { once: true });
+          window.addEventListener("pageshow", () => {
+            window.clearInterval(timer);
+            submitting = false;
+            form.querySelectorAll("button[type='submit']").forEach((button) => {
+              button.disabled = false;
+              button.classList.remove("opacity-60", "cursor-not-allowed");
+            });
+          }, { once: true });
         });
       }
     </script>

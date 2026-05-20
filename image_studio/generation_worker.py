@@ -236,7 +236,7 @@ def process_custom_generation_job(job: dict) -> None:
         if not api_key:
             raise ValueError("自定义接口密钥无法读取，请重新提交任务。")
 
-        client = build_client(api_key, job["base_url"])
+        client = build_client(api_key, job["base_url"], max_retries=0)
         request_payload = build_job_image_params(job)
         response = client.images.generate(**request_payload)
         output_format = request_payload.get("output_format", "png")
@@ -279,7 +279,7 @@ def process_generation_job(job: dict) -> None:
         if not config.get("enabled") or not config.get("api_key") or not config.get("base_url"):
             raise ValueError("内置接口未启用或配置不完整。")
 
-        client = build_client(config["api_key"], config["base_url"])
+        client = build_client(config["api_key"], config["base_url"], max_retries=0)
         request_payload = build_job_image_params(job)
         response = client.images.generate(**request_payload)
         output_format = request_payload.get("output_format", "png")
