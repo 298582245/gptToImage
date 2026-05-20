@@ -16,5 +16,5 @@ COPY --chown=appuser:appuser . .
 
 RUN mkdir -p /app/generated /app/data && chown -R appuser:appuser /app/generated /app/data
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "-w", "1", "-k", "gthread", "--threads", "4", "--timeout", "900", "--graceful-timeout", "120", "-b", "0.0.0.0:8090", "app:app"]
