@@ -32,11 +32,13 @@ def save_image(image_bytes: bytes, output_format: str) -> str:
 
 def image_row_to_dict(row: sqlite3.Row) -> dict:
     visibility = row["visibility"]
+    access_token = row["access_token"] if "access_token" in row.keys() else None
+    image_url = url_for("generated_file", filename=row["filename"], token=access_token) if access_token else url_for("generated_file", filename=row["filename"])
     return {
         "id": row["id"],
-        "url": url_for("generated_file", filename=row["filename"]),
+        "url": image_url,
         "filename": row["filename"],
-        "access_token": row["access_token"] if "access_token" in row.keys() else None,
+        "access_token": access_token,
         "revised_prompt": row["revised_prompt"],
         "prompt": row["prompt"],
         "effective_prompt": row["effective_prompt"],

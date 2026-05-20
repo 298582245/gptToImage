@@ -79,23 +79,6 @@
           return null;
         }
       })();
-      const readStoredJson = (storage, key) => {
-        if (!storage) return null;
-        try {
-          const value = storage.getItem(key);
-          return value ? JSON.parse(value) : null;
-        } catch (error) {
-          return null;
-        }
-      };
-      const writeStoredJson = (storage, key, value) => {
-        if (!storage) return;
-        try {
-          storage.setItem(key, JSON.stringify(value));
-        } catch (error) {
-          return;
-        }
-      };
       const removeStoredItem = (storage, key) => {
         if (!storage) return;
         try {
@@ -104,19 +87,11 @@
           return;
         }
       };
+      removeStoredItem(localStore, savedApiCredentialKey);
       const activeStatuses = ["pending", "running"];
       const currentStatus = "{{ job.status }}";
       if (currentStatus === "completed") {
-        const credentials = readStoredJson(sessionStore, pendingApiCredentialKey);
-        if (credentials && credentials.api_key) {
-          writeStoredJson(localStore, savedApiCredentialKey, {
-            base_url: credentials.base_url || "",
-            api_key: credentials.api_key,
-            model_choice: credentials.model_choice || "",
-            custom_model: credentials.custom_model || "",
-          });
-          removeStoredItem(sessionStore, pendingApiCredentialKey);
-        }
+        removeStoredItem(sessionStore, pendingApiCredentialKey);
       }
       if (activeStatuses.includes(currentStatus)) {
         window.setTimeout(() => {

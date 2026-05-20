@@ -7,9 +7,13 @@ services:
       - "127.0.0.1:8090:8090"
     environment:
       BASE_PATH: /image-studio
+      APP_ENV: production
       OPENAI_BASE_URL: https://ai.wqwlkj.cn
       OPENAI_CLIENT_TIMEOUT_SECONDS: 600
       WORKER_STALE_RUNNING_SECONDS: 1800
+      FORM_SUBMIT_TOKEN_TTL_SECONDS: 86400
+      INITIAL_ADMIN_USERNAME: ${INITIAL_ADMIN_USERNAME:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
     volumes:
       - ./generated:/app/generated
       - ./data:/app/data

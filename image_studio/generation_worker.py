@@ -9,21 +9,22 @@ def running_jobs_count(db: sqlite3.Connection) -> int:
 
 def reset_stale_running_jobs(db: sqlite3.Connection) -> None:
     stale_before = datetime.fromtimestamp(time.time() - WORKER_STALE_RUNNING_SECONDS).strftime("%Y-%m-%d %H:%M:%S")
-    db.execute(
+    stale_jobs = db.execute(
         """
-        UPDATE generation_jobs
-        SET status = 'pending', started_at = NULL, error_message = ''
+        SELECT * FROM generation_jobs
         WHERE status = 'running' AND COALESCE(started_at, created_at) < ?
         """,
         (stale_before,),
-    )
+    ).fetchall()
+    for row in stale_jobs:
+        refund_running_job(db, dict(row), "任务运行超时，系统已退款，请重新提交。")
     db.execute(
         """
         UPDATE custom_generation_jobs
-        SET status = 'pending', started_at = NULL, error_message = ''
+        SET status = 'failed', error_message = ?, completed_at = ?
         WHERE status = 'running' AND COALESCE(started_at, created_at) < ?
         """,
-        (stale_before,),
+        ("任务运行超时，请重新提交。", now_text(), stale_before),
     )
 
 
@@ -31,19 +32,16 @@ def recover_interrupted_running_jobs() -> None:
     db = open_worker_db()
     try:
         db.execute("BEGIN IMMEDIATE")
-        db.execute(
-            """
-            UPDATE generation_jobs
-            SET status = 'pending', started_at = NULL, error_message = ''
-            WHERE status = 'running'
-            """
-        )
+        interrupted_jobs = db.execute("SELECT * FROM generation_jobs WHERE status = 'running'").fetchall()
+        for row in interrupted_jobs:
+            refund_running_job(db, dict(row), "服务重启前任务中断，系统已退款，请重新提交。")
         db.execute(
             """
             UPDATE custom_generation_jobs
-            SET status = 'pending', started_at = NULL, error_message = ''
+            SET status = 'failed', error_message = ?, completed_at = ?
             WHERE status = 'running'
-            """
+            """,
+            ("服务重启前任务中断，请重新提交。", now_text()),
         )
         db.commit()
     except Exception:
@@ -87,36 +85,27 @@ def claim_next_job(db: sqlite3.Connection) -> dict | None:
         raise
 
 
-def provider_may_have_completed(error_message: str) -> bool:
-    lowered = error_message.lower()
-    return "504" in lowered or "gateway time-out" in lowered or "gateway timeout" in lowered or "openresty" in lowered
-
-
-def mark_job_needs_review(db: sqlite3.Connection, job: dict, error_message: str) -> None:
-    db.execute("BEGIN IMMEDIATE")
-    try:
-        current = db.execute("SELECT status FROM generation_jobs WHERE id = ?", (job["id"],)).fetchone()
-        if current and current["status"] == "running":
-            db.execute(
-                "UPDATE generation_jobs SET status = 'needs_review', error_message = ?, completed_at = ? WHERE id = ?",
-                (error_message[:500], now_text(), job["id"]),
-            )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
+def refund_running_job(db: sqlite3.Connection, job: dict, error_message: str) -> None:
+    cursor = db.execute(
+        "UPDATE generation_jobs SET status = 'failed', error_message = ?, completed_at = ? WHERE id = ? AND status = 'running'",
+        (error_message[:500], now_text(), job["id"]),
+    )
+    if cursor.rowcount != 1:
+        return
+    refunded = db.execute(
+        "SELECT 1 FROM credit_ledger WHERE job_id = ? AND amount > 0 AND reason LIKE '%退款%'",
+        (job["id"],),
+    ).fetchone()
+    if not refunded:
+        add_credit_ledger(db, job["user_id"], int(job["cost"]), "内置接口生成失败退款", job["id"])
 
 
 def refund_job(db: sqlite3.Connection, job: dict, error_message: str) -> None:
     db.execute("BEGIN IMMEDIATE")
     try:
-        current = db.execute("SELECT status FROM generation_jobs WHERE id = ?", (job["id"],)).fetchone()
+        current = db.execute("SELECT * FROM generation_jobs WHERE id = ?", (job["id"],)).fetchone()
         if current and current["status"] == "running":
-            add_credit_ledger(db, job["user_id"], int(job["cost"]), "内置接口生成失败退款", job["id"])
-            db.execute(
-                "UPDATE generation_jobs SET status = 'failed', error_message = ?, completed_at = ? WHERE id = ?",
-                (error_message[:500], now_text(), job["id"]),
-            )
+            refund_running_job(db, dict(current), error_message)
         db.commit()
     except Exception:
         db.rollback()
@@ -126,7 +115,7 @@ def refund_job(db: sqlite3.Connection, job: dict, error_message: str) -> None:
 def complete_job(db: sqlite3.Connection, job: dict, image_entries: list[dict]) -> None:
     db.execute("BEGIN IMMEDIATE")
     try:
-        current = db.execute("SELECT status FROM generation_jobs WHERE id = ?", (job["id"],)).fetchone()
+        current = db.execute("SELECT status, user_id, n, cost FROM generation_jobs WHERE id = ?", (job["id"],)).fetchone()
         if not current or current["status"] != "running":
             db.rollback()
             return
@@ -137,6 +126,12 @@ def complete_job(db: sqlite3.Connection, job: dict, image_entries: list[dict]) -
             "UPDATE generation_jobs SET status = 'completed', completed_at = ? WHERE id = ?",
             (now_text(), job["id"]),
         )
+        expected_count = max(1, int(current["n"] or 1))
+        actual_count = min(len(image_entries), expected_count)
+        if actual_count < expected_count and int(current["cost"] or 0) > 0:
+            refund_amount = int(current["cost"]) * (expected_count - actual_count) // expected_count
+            if refund_amount > 0:
+                add_credit_ledger(db, current["user_id"], refund_amount, "内置接口少图退款", job["id"])
         db.commit()
     except Exception:
         db.rollback()
@@ -205,7 +200,7 @@ def complete_custom_job(db: sqlite3.Connection, job: dict, image_entries: list[d
             return
 
         for entry in image_entries:
-            entry["visibility"] = "public"
+            entry["visibility"] = "private"
             entry["source"] = "custom"
             create_image_record(entry, commit=False, db=db)
         db.execute(
@@ -276,7 +271,7 @@ def process_custom_generation_job(job: dict) -> None:
                     "filename": filename,
                     "user_id": job.get("user_id"),
                     "access_token": job["access_token"],
-                    "visibility": "public",
+                    "visibility": "private",
                     "source": "custom",
                     "revised_prompt": getattr(item, "revised_prompt", None),
                     "prompt": job["prompt"],
@@ -306,7 +301,7 @@ def process_generation_job(job: dict) -> None:
         if not config.get("enabled") or not config.get("api_key") or not config.get("base_url"):
             raise ValueError("内置接口未启用或配置不完整。")
 
-        client = build_client(config["api_key"], config["base_url"], max_retries=0)
+        client = build_client(config["api_key"], config["base_url"], max_retries=0, validate_public_base=False)
         request_payload = build_job_image_params(job)
         response = client.images.generate(
             **request_payload,
@@ -338,10 +333,7 @@ def process_generation_job(job: dict) -> None:
     except Exception as exc:  # noqa: BLE001
         error_message = str(exc)
         try:
-            if provider_may_have_completed(error_message):
-                mark_job_needs_review(db, job, error_message)
-            else:
-                refund_job(db, job, error_message)
+            refund_job(db, job, error_message)
         except Exception as refund_exc:  # noqa: BLE001
             try:
                 db.rollback()

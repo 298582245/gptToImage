@@ -122,16 +122,20 @@ def index():
 
 
 @app.post(f"{BASE_PATH}/api/models" if BASE_PATH else "/api/models")
+@login_required
 def api_models():
+    if not validate_csrf_token():
+        abort(400)
     payload = request.get_json(silent=True) or {}
     base_url = str(payload.get("base_url", "")).strip() or DEFAULTS["base_url"]
-    api_key = str(payload.get("api_key", "")).strip() or DEFAULTS["api_key"]
+    api_key = str(payload.get("api_key", "")).strip()
     current_model = str(payload.get("current_model", "")).strip()
 
     if not api_key:
         return jsonify({"ok": False, "error": "请先填写 API Key。"}), 400
 
     try:
+        base_url = validate_public_base_url(base_url)
         options, status = fetch_remote_model_options(api_key, base_url)
         selected_model = next(
             (option["value"] for option in options if option["value"] == current_model),
@@ -168,14 +172,19 @@ def api_models():
 @app.route(f"{BASE_PATH}/generated/<path:filename>" if BASE_PATH else "/generated/<path:filename>")
 def generated_file(filename: str):
     row = get_db().execute(
-        "SELECT id, filename, user_id, visibility FROM images WHERE filename = ?",
+        "SELECT id, filename, user_id, access_token, visibility FROM images WHERE filename = ?",
         (filename,),
     ).fetchone()
-    if row and row["visibility"] == "hidden":
+    if row is None:
+        abort(404)
+    if row["visibility"] == "hidden":
         user = g.get("current_user")
         if not user or not user.get("is_admin"):
             abort(404)
-    elif row and row["visibility"] != "public":
+    elif row["visibility"] != "public":
+        token = request.args.get("token", "")
+        if token and row["visibility"] == "private" and row["access_token"] and secrets.compare_digest(token, row["access_token"]):
+            return send_from_directory(GENERATED_DIR, filename)
         user = g.get("current_user")
         if not user or (not user.get("is_admin") and user["id"] != row["user_id"]):
             abort(404)

@@ -53,7 +53,7 @@ IMAGE_INSPIRER_SOURCE_URL = "https://github.com/wukongnotnull/image-inspirer"
 
 DEFAULTS = {
     "base_url": os.getenv("OPENAI_BASE_URL", "https://ai.wqwlkj.cn"),
-    "api_key": os.getenv("OPENAI_API_KEY", ""),
+    "api_key": "",
     "model": os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
     "size": "1024x1024",
     "quality": "auto",
@@ -80,7 +80,6 @@ JOB_STATUS_LABELS = {
     "pending": "待生成",
     "running": "生成中",
     "completed": "已完成",
-    "needs_review": "待核对",
     "failed": "失败",
     "cancelled": "已取消",
 }
@@ -182,6 +181,8 @@ INSPIRER_CATEGORY_BY_VALUE = {category["value"]: category for category in INSPIR
 WORKER_POLL_SECONDS = 2
 WORKER_STALE_RUNNING_SECONDS = int(os.getenv("WORKER_STALE_RUNNING_SECONDS", str(30 * 60)))
 OPENAI_CLIENT_TIMEOUT_SECONDS = int(os.getenv("OPENAI_CLIENT_TIMEOUT_SECONDS", "600"))
+FORM_SUBMIT_TOKEN_TTL_SECONDS = int(os.getenv("FORM_SUBMIT_TOKEN_TTL_SECONDS", str(24 * 60 * 60)))
+APP_ENV = os.getenv("APP_ENV", "").strip().lower()
 WORKER_LOCK = threading.Lock()
 WORKER_STARTED = False
 WORKER_THREAD = None
@@ -217,6 +218,7 @@ app.secret_key = load_secret_key()
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=APP_ENV == "production",
 )
 FERNET = load_fernet()
 
@@ -526,16 +528,40 @@ def users_count() -> int:
 
 def create_user(username: str, password: str) -> dict:
     db = get_db()
-    is_admin = 1 if users_count() == 0 else 0
     cursor = db.execute(
         """
         INSERT INTO users (username, password_hash, credits, is_admin, created_at)
-        VALUES (?, ?, 0, ?, ?)
+        VALUES (?, ?, 0, 0, ?)
         """,
-        (username, generate_password_hash(password), is_admin, now_text()),
+        (username, generate_password_hash(password), now_text()),
     )
     db.commit()
     return get_user_by_id(cursor.lastrowid)
+
+
+def ensure_initial_admin() -> None:
+    username = normalize_username(os.getenv("INITIAL_ADMIN_USERNAME", ""))
+    password = os.getenv("INITIAL_ADMIN_PASSWORD", "")
+    if not username or not password:
+        return
+    if validate_auth_form(username, password):
+        app.logger.warning("初始管理员账号或密码不符合注册规则，已跳过创建。")
+        return
+
+    db = get_db()
+    user = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    password_hash = generate_password_hash(password)
+    if user:
+        db.execute("UPDATE users SET password_hash = ?, is_admin = 1, is_disabled = 0 WHERE id = ?", (password_hash, user["id"]))
+    else:
+        db.execute(
+            """
+            INSERT INTO users (username, password_hash, credits, is_admin, created_at)
+            VALUES (?, ?, 0, 1, ?)
+            """,
+            (username, password_hash, now_text()),
+        )
+    db.commit()
 
 
 def current_user_id() -> int | None:
@@ -553,7 +579,7 @@ def get_csrf_token() -> str:
 
 def validate_csrf_token() -> bool:
     expected = session.get("_csrf_token", "")
-    submitted = request.form.get("_csrf_token", "")
+    submitted = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
     return bool(expected and submitted and secrets.compare_digest(expected, submitted))
 
 
@@ -580,12 +606,18 @@ def validate_submit_token() -> bool:
     return True
 
 
+def cleanup_submit_tokens(db: sqlite3.Connection) -> None:
+    expires_before = datetime.fromtimestamp(time.time() - FORM_SUBMIT_TOKEN_TTL_SECONDS).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("DELETE FROM form_submit_tokens WHERE created_at < ?", (expires_before,))
+
+
 def claim_submit_token() -> bool:
     if not validate_submit_token():
         return False
     submitted = request.form.get("_submit_token", "")
     db = get_db()
     try:
+        cleanup_submit_tokens(db)
         db.execute(
             "INSERT INTO form_submit_tokens (token, user_id, created_at) VALUES (?, ?, ?)",
             (submitted, current_user_id(), now_text()),
@@ -622,6 +654,9 @@ def admin_required(view):
 
 @app.before_request
 def load_current_user() -> None:
+    if not app.config.get("_initial_admin_checked"):
+        ensure_initial_admin()
+        app.config["_initial_admin_checked"] = True
     g.current_user = None
     user_id = session.get("user_id")
     if user_id is not None:

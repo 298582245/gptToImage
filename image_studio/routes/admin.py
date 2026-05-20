@@ -127,7 +127,7 @@ def admin_image_restore(image_id: int):
         if not image:
             raise ValueError("图片不存在。")
         restored_visibility = "private"
-        if image["source"] != "builtin" or image["publish_to_gallery"]:
+        if image["source"] == "builtin" and image["publish_to_gallery"]:
             restored_visibility = "public"
         db.execute("UPDATE images SET visibility = ? WHERE id = ?", (restored_visibility, image_id))
         db.commit()
@@ -315,11 +315,12 @@ def admin_cancel_job(job_id: int):
             flash("只能取消待生成任务；生成中的任务会在失败时自动退款。")
             return redirect(url_for("admin_jobs"))
 
-        add_credit_ledger(db, job["user_id"], int(job["cost"]), "管理员取消任务退款", job_id)
-        db.execute(
-            "UPDATE generation_jobs SET status = 'cancelled', error_message = ?, completed_at = ? WHERE id = ?",
+        cursor = db.execute(
+            "UPDATE generation_jobs SET status = 'cancelled', error_message = ?, completed_at = ? WHERE id = ? AND status = 'pending'",
             ("管理员取消", now_text(), job_id),
         )
+        if cursor.rowcount == 1:
+            add_credit_ledger(db, job["user_id"], int(job["cost"]), "管理员取消任务退款", job_id)
         db.commit()
         flash("任务已取消并退款。")
     except Exception as exc:  # noqa: BLE001

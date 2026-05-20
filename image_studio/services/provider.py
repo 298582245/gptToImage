@@ -1,8 +1,43 @@
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
 from app import *  # noqa: F401,F403
 
 
-def normalize_base_url(base_url: str) -> str:
+def validate_public_base_url(base_url: str) -> str:
     value = base_url.strip().rstrip("/")
+    if not value:
+        return value
+
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("Base URL 必须是有效的 http/https 地址。")
+    if parsed.username or parsed.password:
+        raise ValueError("Base URL 不允许包含用户名或密码。")
+
+    hostname = parsed.hostname.strip().lower().rstrip(".")
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise ValueError("Base URL 不允许指向本机地址。")
+
+    try:
+        addresses = [str(ipaddress.ip_address(hostname))]
+    except ValueError:
+        try:
+            addresses = list({item[4][0] for item in socket.getaddrinfo(hostname, parsed.port or 443, type=socket.SOCK_STREAM)})
+        except socket.gaierror as exc:
+            raise ValueError("Base URL 域名无法解析。") from exc
+
+    if not addresses:
+        raise ValueError("Base URL 域名无法解析。")
+    for address in addresses:
+        if not ipaddress.ip_address(address).is_global:
+            raise ValueError("Base URL 不允许指向内网、本机或保留地址。")
+    return value
+
+
+def normalize_base_url(base_url: str, validate_public: bool = True) -> str:
+    value = validate_public_base_url(base_url) if validate_public else base_url.strip().rstrip("/")
     if not value:
         return value
     if value.endswith("/v1"):
@@ -10,12 +45,12 @@ def normalize_base_url(base_url: str) -> str:
     return f"{value}/v1"
 
 
-def build_client(api_key: str, base_url: str, max_retries: int | None = None) -> OpenAI:
+def build_client(api_key: str, base_url: str, max_retries: int | None = None, validate_public_base: bool = True) -> OpenAI:
     kwargs = {"api_key": api_key.strip(), "timeout": OPENAI_CLIENT_TIMEOUT_SECONDS}
     if max_retries is not None:
         kwargs["max_retries"] = max_retries
     if base_url.strip():
-        kwargs["base_url"] = normalize_base_url(base_url)
+        kwargs["base_url"] = normalize_base_url(base_url, validate_public=validate_public_base)
     return OpenAI(**kwargs)
 
 

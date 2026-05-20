@@ -19,12 +19,8 @@ def create_builtin_job(form_values: dict) -> int:
     config = get_provider_config(db=db)
     if not config.get("enabled") or not config.get("has_api_key") or not config.get("base_url"):
         raise ValueError("内置接口暂未启用，请联系管理员配置。")
-    if user_active_jobs_count(db, user_id) >= int(config.get("per_user_pending_limit", 3)):
-        raise ValueError("你当前排队或生成中的任务太多，请稍后再提交。")
 
-    requested_n = max(1, min(int(form_values["n"]), 10))
     price_per_image = int(config.get("price_per_image", 1))
-    cost = price_per_image * requested_n
     original_prompt = form_values["prompt"]
     effective_prompt = form_values.get("confirmed_effective_prompt", "").strip()
     confirmed_source = form_values.get("confirmed_prompt_source", "").strip()
@@ -32,9 +28,25 @@ def create_builtin_job(form_values: dict) -> int:
         raise ValueError("润色确认已失效，请重新确认提示词。")
     if not effective_prompt:
         effective_prompt = polish_prompt_text(original_prompt, form_values.get("polish_category", "auto")) if form_values["polish_prompt"] else original_prompt
+    request_params = build_image_params(
+        {
+            "model": config.get("model") or DEFAULTS["model"],
+            "prompt": effective_prompt,
+            "size": form_values["size"],
+            "quality": form_values["quality"],
+            "background": form_values["background"],
+            "output_format": form_values["output_format"],
+            "style": form_values.get("style", "vivid"),
+            "n": form_values["n"],
+        }
+    )
+    actual_n = int(request_params["n"])
+    cost = price_per_image * actual_n
 
     try:
         db.execute("BEGIN IMMEDIATE")
+        if user_active_jobs_count(db, user_id) >= int(config.get("per_user_pending_limit", 3)):
+            raise ValueError("你当前排队或生成中的任务太多，请稍后再提交。")
         cursor = db.execute(
             """
             INSERT INTO generation_jobs (
@@ -47,20 +59,20 @@ def create_builtin_job(form_values: dict) -> int:
                 original_prompt,
                 effective_prompt,
                 1 if form_values["polish_prompt"] else 0,
-                config.get("model") or DEFAULTS["model"],
-                form_values["size"],
-                form_values["quality"],
-                form_values["background"],
-                form_values["output_format"],
-                form_values["style"],
-                requested_n,
+                request_params["model"],
+                request_params.get("size", ""),
+                request_params.get("quality", ""),
+                request_params.get("background", ""),
+                request_params.get("output_format", "png"),
+                request_params.get("style", form_values.get("style", "vivid")),
+                actual_n,
                 cost,
                 1 if form_values.get("publish_to_gallery") else 0,
                 now_text(),
             ),
         )
         job_id = cursor.lastrowid
-        add_credit_ledger(db, user_id, -cost, f"图片生成扣费：{price_per_image} 积分/张 × {requested_n} 张", job_id)
+        add_credit_ledger(db, user_id, -cost, f"图片生成扣费：{price_per_image} 积分/张 × {actual_n} 张", job_id)
         db.commit()
     except Exception:
         db.rollback()
@@ -70,7 +82,7 @@ def create_builtin_job(form_values: dict) -> int:
 
 
 def create_custom_job(form_values: dict) -> str:
-    effective_api_key = form_values["api_key"] or DEFAULTS["api_key"]
+    effective_api_key = form_values["api_key"].strip()
     if not effective_api_key:
         raise ValueError("请先填写 API Key。")
     if form_values["model_choice"] == "__custom__" and not form_values["custom_model"]:
@@ -89,7 +101,20 @@ def create_custom_job(form_values: dict) -> str:
             "custom_model": form_values.get("custom_model", ""),
         }
     )
-    requested_n = max(1, min(int(form_values["n"]), 10))
+    base_url = validate_public_base_url(form_values["base_url"] or DEFAULTS["base_url"])
+    request_params = build_image_params(
+        {
+            "model": resolved_model,
+            "prompt": effective_prompt,
+            "size": form_values["size"],
+            "quality": form_values["quality"],
+            "background": form_values["background"],
+            "output_format": form_values["output_format"],
+            "style": form_values.get("style", "vivid"),
+            "n": form_values["n"],
+        }
+    )
+    actual_n = int(request_params["n"])
     access_token = secrets.token_urlsafe(32)
 
     db = get_db()
@@ -107,15 +132,15 @@ def create_custom_job(form_values: dict) -> str:
             original_prompt,
             effective_prompt,
             1 if form_values["polish_prompt"] else 0,
-            form_values["base_url"],
+            base_url,
             encrypt_secret(effective_api_key),
-            resolved_model,
-            form_values["size"],
-            form_values["quality"],
-            form_values["background"],
-            form_values["output_format"],
-            form_values["style"],
-            requested_n,
+            request_params["model"],
+            request_params.get("size", ""),
+            request_params.get("quality", ""),
+            request_params.get("background", ""),
+            request_params.get("output_format", "png"),
+            request_params.get("style", form_values.get("style", "vivid")),
+            actual_n,
             now_text(),
         ),
     )

@@ -158,7 +158,7 @@
                       <input type="radio" name="generation_mode" value="custom" class="mt-1" {% if form_values.generation_mode != "builtin" %}checked{% endif %}>
                       <div>
                         <p class="text-sm font-medium text-stone-900">使用自己的接口</p>
-                        <p class="mt-1 text-xs leading-5 text-stone-500">游客可用，成功后浏览器会记住接口、密钥和模型，不消耗积分。</p>
+                        <p class="mt-1 text-xs leading-5 text-stone-500">游客可用，接口信息仅在当前浏览器会话内暂存，不消耗积分。</p>
                       </div>
                     </div>
                   </label>
@@ -294,7 +294,7 @@
                           </label>
                           <label class="block">
                             <span class="mb-2 block text-xs font-medium text-stone-500">API Key</span>
-                            <input id="api_key" type="password" name="api_key" placeholder="留空则使用系统默认密钥" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
+                            <input id="api_key" type="password" name="api_key" placeholder="请输入自己的 API Key" class="w-full rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-stone-300">
                           </label>
                         </div>
 
@@ -609,6 +609,7 @@
           return;
         }
       };
+      removeStoredItem(localStore, savedApiCredentialKey);
 
       const getCurrentApiCredentials = () => ({
         base_url: baseUrlInput ? baseUrlInput.value.trim() : "",
@@ -636,22 +637,11 @@
 
       const promoteSuccessfulApiCredentials = () => {
         if (!hasGeneratedImages) return;
-        const credentials = readStoredJson(sessionStore, pendingApiCredentialKey);
-        if (credentials && credentials.api_key) {
-          writeStoredJson(localStore, savedApiCredentialKey, {
-            base_url: credentials.base_url || "",
-            api_key: credentials.api_key,
-            model_choice: credentials.model_choice || "",
-            custom_model: credentials.custom_model || "",
-          });
-        }
         removeStoredItem(sessionStore, pendingApiCredentialKey);
       };
 
       const hydrateSavedApiCredentials = () => {
-        if (!shouldApplySavedCredentials) return;
-        const credentials = readStoredJson(localStore, savedApiCredentialKey);
-        applyStoredApiCredentials(credentials);
+        return;
       };
 
       const hydratePendingApiCredentials = () => {
@@ -764,7 +754,10 @@
           try {
             const response = await fetch(`${basePath}/api/models`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": "{{ csrf_token() }}",
+              },
               body: JSON.stringify({
                 base_url: baseUrlInput ? baseUrlInput.value : "",
                 api_key: apiKeyInput ? apiKeyInput.value : "",

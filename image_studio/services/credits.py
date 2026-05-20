@@ -2,13 +2,20 @@ from app import *  # noqa: F401,F403
 
 
 def add_credit_ledger(db: sqlite3.Connection, user_id: int, amount: int, reason: str, job_id: int | None = None) -> int:
-    user = db.execute("SELECT credits FROM users WHERE id = ?", (user_id,)).fetchone()
-    if user is None:
-        raise ValueError("用户不存在。")
-    balance_after = int(user["credits"]) + amount
-    if balance_after < 0:
+    cursor = db.execute(
+        """
+        UPDATE users
+        SET credits = credits + ?
+        WHERE id = ? AND credits + ? >= 0
+        """,
+        (amount, user_id, amount),
+    )
+    if cursor.rowcount != 1:
+        exists = db.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone()
+        if exists is None:
+            raise ValueError("用户不存在。")
         raise ValueError("积分不足。")
-    db.execute("UPDATE users SET credits = ? WHERE id = ?", (balance_after, user_id))
+    balance_after = int(db.execute("SELECT credits FROM users WHERE id = ?", (user_id,)).fetchone()["credits"])
     db.execute(
         """
         INSERT INTO credit_ledger (user_id, job_id, amount, balance_after, reason, created_at)
